@@ -28,11 +28,11 @@ You can contact us through [our mail list](mailto:xiangshan-all@ict.ac.cn). All 
 
 ## Architecture
 
-The first stable micro-architecture of XiangShan is called Yanqihu (雁栖湖) on this [branch](https://github.com/OpenXiangShan/XiangShan/tree/yanqihu), which has been developed since June 2020. The current version of XiangShan, also known as Nanhu (南湖), is still under development on the master branch.
+The first stable micro-architecture of XiangShan is called Yanqihu (雁栖湖) on this [branch](https://github.com/OpenXiangShan/XiangShan/tree/yanqihu), which has been developed since June 2020. The current version of XiangShan, also known as Nanhu (南湖), is still under development on the main branch. Present version of Nanhu is V3.
 
-The micro-architecture overview of Nanhu (南湖) is shown below.
+The micro-architecture overview of Nanhu-V3 (南湖V3) is shown below.
 
-![xs-arch-nanhu](images/xs-arch-nanhu.svg)
+![xs-arch-nanhu](images/xs-arch-neo-nanhu.svg)
 
 
 

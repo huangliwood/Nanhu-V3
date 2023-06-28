@@ -175,7 +175,7 @@ class ICacheMetaArray(parentName:String = "Unknown")(implicit p: Parameters) ext
   val write_bank_1 = io.write.valid && io.write.bits.bankIdx
 
   //xy
-  io.fencei.done := true.B
+  //io.fencei.done := true.B
   val v = RegInit(VecInit(Seq.fill(2)(VecInit(Seq.fill(nSets)(VecInit(Seq.fill(nWays)(false.B)))))))
   val write1 = io.write.bits
 
@@ -190,6 +190,8 @@ class ICacheMetaArray(parentName:String = "Unknown")(implicit p: Parameters) ext
   when(io.fencei.start) {
     v.map(a => a.map(b => b.map(c => c := false.B)))
     io.fencei.done := true.B
+  }.otherwise {
+     io.fencei.done := false.B
   }
 
   val write_meta_bits = Wire(UInt(metaEntryBits.W))

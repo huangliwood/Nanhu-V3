@@ -180,10 +180,10 @@ class ICacheMetaArray(parentName:String = "Unknown")(implicit p: Parameters) ext
   val write1 = io.write.bits
 
   when(write_bank_0) {
-    v(0)(write1.virIdx)(UIntToOH(write1.waymask(highestIdxBit,1))) := true.B
+    v(0)(write1.virIdx(highestIdxBit,1))(UIntToOH(write1.waymask)) := true.B
   }.otherwise {
     when (write_bank_1) {
-      v(1)(write1.virIdx)(UIntToOH(write1.waymask(highestIdxBit,1))) := true.B
+      v(1)(write1.virIdx(highestIdxBit,1))(UIntToOH(write1.waymask)) := true.B
     }
   }
 
@@ -660,11 +660,11 @@ class ICacheImp(outer: ICache) extends LazyModuleImp(outer) with HasICacheParame
 //  bus.b.ready := false.B
 //  bus.c.valid := false.B
  // bus.c.bits  := DontCare
-//  bus.e.valid := false.B
-//  bus.e.bits  := DontCare
+  bus.e.valid := false.B
+  bus.e.bits  := DontCare
 
   bus.a <> missUnit.io.mem_acquire
- // bus.e <> missUnit.io.mem_finish
+  bus.e <> missUnit.io.mem_finish
 //xy
   // releaseUnit.io.req <>  replacePipe.io.release_req
   // replacePipe.io.release_finish := releaseUnit.io.finish

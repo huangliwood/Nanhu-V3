@@ -176,14 +176,14 @@ class ICacheMetaArray(parentName:String = "Unknown")(implicit p: Parameters) ext
 
   //xy
   //io.fencei.done := true.B
-  val v = RegInit(VecInit(Seq.fill(2)(VecInit(Seq.fill(nSets)(VecInit(Seq.fill(nWays)(false.B)))))))
+  val v = RegInit(VecInit(Seq.fill(2)(VecInit(Seq.fill(nSets/2)(VecInit(Seq.fill(nWays)(false.B)))))))
   val write1 = io.write.bits
 
   when(write_bank_0) {
-    v(0)(write1.virIdx)(UIntToOH(write1.waymask)) := true.B
+    v(0)(write1.virIdx)(UIntToOH(write1.waymask(highestIdxBit,1))) := true.B
   }.otherwise {
     when (write_bank_1) {
-      v(1)(write1.virIdx)(UIntToOH(write1.waymask)) := true.B
+      v(1)(write1.virIdx)(UIntToOH(write1.waymask(highestIdxBit,1))) := true.B
     }
   }
 
@@ -267,18 +267,18 @@ class ICacheMetaArray(parentName:String = "Unknown")(implicit p: Parameters) ext
   io.readResp.v <> DontCare
   when(port_0_read_0_reg){
     io.readResp.metaData(0) := read_metas(0)
-    (0 until nWays).map{i => io.readResp.v(0)(i) := v(0)(io.read.bits.vSetIdx(0))(i)}
+    (0 until nWays).map{i => io.readResp.v(0)(i) := v(0)(io.read.bits.vSetIdx(0)(highestIdxBit,1))(i)}
   }.elsewhen(port_0_read_1_reg){
     io.readResp.metaData(0) := read_metas(1)
-    (0 until nWays).map{i => io.readResp.v(0)(i) := v(1)(io.read.bits.vSetIdx(0))(i)}
+    (0 until nWays).map{i => io.readResp.v(0)(i) := v(1)(io.read.bits.vSetIdx(0)(highestIdxBit,1))(i)}
   }
 
   when(port_1_read_0_reg){
     io.readResp.metaData(1) := read_metas(0)
-    (0 until nWays).map{i => io.readResp.v(1)(i) := v(0)(io.read.bits.vSetIdx(1))(i)}
+    (0 until nWays).map{i => io.readResp.v(1)(i) := v(0)(io.read.bits.vSetIdx(1)(highestIdxBit,1))(i)}
   }.elsewhen(port_1_read_1_reg){
     io.readResp.metaData(1) := read_metas(1)
-    (0 until nWays).map{i => io.readResp.v(1)(i) := v(1)(io.read.bits.vSetIdx(1))(i)}
+    (0 until nWays).map{i => io.readResp.v(1)(i) := v(1)(io.read.bits.vSetIdx(1)(highestIdxBit,1))(i)}
   }
 
 
@@ -657,14 +657,14 @@ class ICacheImp(outer: ICache) extends LazyModuleImp(outer) with HasICacheParame
   missUnit.io.hartId       := io.hartId
   prefetchPipe.io.fromMSHR <> missUnit.io.prefetch_check
 
-  bus.b.ready := false.B
-  bus.c.valid := false.B
-  bus.c.bits  := DontCare
-  bus.e.valid := false.B
-  bus.e.bits  := DontCare
+//  bus.b.ready := false.B
+//  bus.c.valid := false.B
+ // bus.c.bits  := DontCare
+//  bus.e.valid := false.B
+//  bus.e.bits  := DontCare
 
   bus.a <> missUnit.io.mem_acquire
-  bus.e <> missUnit.io.mem_finish
+ // bus.e <> missUnit.io.mem_finish
 //xy
   // releaseUnit.io.req <>  replacePipe.io.release_req
   // replacePipe.io.release_finish := releaseUnit.io.finish

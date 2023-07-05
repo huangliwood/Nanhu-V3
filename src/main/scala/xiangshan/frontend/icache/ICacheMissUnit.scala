@@ -231,7 +231,7 @@ class ICacheMissEntry(edge: TLEdgeOut, id: Int)(implicit p: Parameters) extends 
   )._2
   io.mem_acquire.bits := acquireBlock
   // resolve cache alias by L2
-  io.mem_acquire.bits.user.lift(AliasKey).foreach(_ := req.vaddr(13, 12))
+  io.mem_acquire.bits.user.lift(AliasKey).foreach(_ := req.vaddr(12))
   require(nSets <= 256) // icache size should not be more than 128KB
 
   /** Grant ACK */

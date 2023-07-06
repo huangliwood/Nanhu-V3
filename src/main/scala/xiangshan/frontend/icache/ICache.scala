@@ -736,7 +736,7 @@ class ICacheImp(outer: ICache) extends LazyModuleImp(outer) with HasICacheParame
   mainPipe.io.fetch.req <> io.fetch.req //&& !fetchShouldBlock(i)
   // in L1ICache, we only expect GrantData and ReleaseAck
   bus.d.ready := false.B
-  when ( bus.d.bits.opcode === TLMessages.GrantData) {
+  when ( bus.d.bits.opcode === TLMessages.AccessAckData) {
     missUnit.io.mem_grant <> bus.d
   } .elsewhen (bus.d.bits.opcode === TLMessages.ReleaseAck) {
     //xy

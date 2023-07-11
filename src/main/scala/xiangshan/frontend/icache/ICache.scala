@@ -131,17 +131,17 @@ class ICacheMetadata(implicit p: Parameters) extends ICacheBundle {
 }
 
 object ICacheMetadata {
-  def apply(tag: Bits, coh: ClientMetadata)(implicit p: Parameters) = {
+  def apply(tag: Bits)(implicit p: Parameters) = {
     val meta = Wire(new L1Metadata)
     meta.tag := tag
-    meta.coh := coh
-    meta
+  //  meta.coh := coh
+    meta.tag
   }
 }
 
 
 class ICacheMetaArray(parentName:String = "Unknown")(implicit p: Parameters) extends ICacheArray {
-  def onReset = ICacheMetadata(0.U, ClientMetadata.onReset)
+  def onReset = ICacheMetadata(0.U)
 
   val metaBits = onReset.getWidth
   val metaEntryBits = cacheParams.tagCode.width(metaBits)
@@ -259,6 +259,7 @@ class ICacheMetaArray(parentName:String = "Unknown")(implicit p: Parameters) ext
   //Parity Encode
   val write = io.write.bits
   write_meta_bits := cacheParams.tagCode.encode(ICacheMetadata(tag = write.phyTag, coh = write.coh).asUInt)
+  write_meta_bits := cacheParams.tagCode.encode(ICacheMetadata(tag = write.phyTag).asUInt)
 
   val wayNum   = OHToUInt(io.write.bits.waymask)
   val validPtr = Cat(io.write.bits.virIdx, wayNum)
@@ -598,7 +599,6 @@ class ICacheImp(outer: ICache) extends LazyModuleImp(outer) with HasICacheParame
 
  // metaArray.io.write <> meta_write_arb.io.out
   metaArray.io.write <> missUnit.io.meta_write
-  metaArray.io.write.bits.coh.asUInt := 1.U
   metaArray.io.fencei <> io.fencei
 
   dataArray.io.write <> missUnit.io.data_write
@@ -660,12 +660,12 @@ class ICacheImp(outer: ICache) extends LazyModuleImp(outer) with HasICacheParame
 //  bus.b.ready := false.B
 //  bus.c.valid := false.B
  // bus.c.bits  := DontCare
-  bus.e.valid := false.B
-  bus.e.bits  := DontCare
+ // bus.e.valid := false.B
+ // bus.e.bits  := DontCare
 
   bus.a <> missUnit.io.mem_acquire
-  bus.e <> missUnit.io.mem_finish
-//xy
+ // bus.e <> missUnit.io.mem_finish
+
   // releaseUnit.io.req <>  replacePipe.io.release_req
   // replacePipe.io.release_finish := releaseUnit.io.finish
   // bus.c <> releaseUnit.io.mem_release
@@ -673,7 +673,7 @@ class ICacheImp(outer: ICache) extends LazyModuleImp(outer) with HasICacheParame
   // connect bus d
   missUnit.io.mem_grant.valid := false.B
   missUnit.io.mem_grant.bits  := DontCare
-//xy
+
   // releaseUnit.io.mem_grant.valid := false.B
   // releaseUnit.io.mem_grant.bits  := DontCare
 

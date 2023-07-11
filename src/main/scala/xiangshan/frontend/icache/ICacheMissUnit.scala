@@ -73,7 +73,7 @@ class ICacheMissEntry(edge: TLEdgeOut, id: Int)(implicit p: Parameters) extends 
     //tilelink channel
     val mem_acquire = DecoupledIO(new TLBundleA(edge.bundle))
     val mem_grant = Flipped(DecoupledIO(new TLBundleD(edge.bundle)))
-    val mem_finish = DecoupledIO(new TLBundleE(edge.bundle))
+   // val mem_finish = DecoupledIO(new TLBundleE(edge.bundle))
 
     val meta_write = DecoupledIO(new ICacheMetaWriteBundle)
     val data_write = DecoupledIO(new ICacheDataWriteBundle)
@@ -170,8 +170,8 @@ class ICacheMissEntry(edge: TLEdgeOut, id: Int)(implicit p: Parameters) extends 
           is_dirty    := io.mem_grant.bits.echo.lift(DirtyKey).getOrElse(false.B)
           when(readBeatCnt === (refillCycles - 1).U) {
             assert(refill_done, "refill not done!")
-            state := s_send_grant_ack
-            state_dup.map(_ := s_send_grant_ack)
+            state := s_write_back
+            state_dup.map(_ := s_write_back)
           }
         }
       }
@@ -198,12 +198,12 @@ class ICacheMissEntry(edge: TLEdgeOut, id: Int)(implicit p: Parameters) extends 
     //   }
     // }
 
-      is(s_send_grant_ack) {
-      when(io.mem_finish.fire()) {
-        state := s_write_back
-        state_dup.map(_ := s_write_back)
-      }
-    }
+    //   is(s_send_grant_ack) {
+    //   when(io.mem_finish.fire()) {
+    //     state := s_write_back
+    //     state_dup.map(_ := s_write_back)
+    //   }
+    // }
 
     is(s_write_back) {
       state := Mux(io.meta_write.fire() && io.data_write.fire(), s_wait_resp, s_write_back)
@@ -235,8 +235,8 @@ class ICacheMissEntry(edge: TLEdgeOut, id: Int)(implicit p: Parameters) extends 
   require(nSets <= 256) // icache size should not be more than 128KB
 
   /** Grant ACK */
-  io.mem_finish.valid := (state_dup(3) === s_send_grant_ack) && is_grant
-  io.mem_finish.bits := grantack
+  // io.mem_finish.valid := (state_dup(3) === s_send_grant_ack) && is_grant
+  // io.mem_finish.bits := grantack
 
   //resp to ifu
   io.resp.valid := state === s_wait_resp
@@ -282,7 +282,7 @@ class ICacheMissUnit(edge: TLEdgeOut)(implicit p: Parameters) extends ICacheMiss
 
     val mem_acquire = DecoupledIO(new TLBundleA(edge.bundle))
     val mem_grant   = Flipped(DecoupledIO(new TLBundleD(edge.bundle)))
-    val mem_finish  = DecoupledIO(new TLBundleE(edge.bundle))
+   // val mem_finish  = DecoupledIO(new TLBundleE(edge.bundle))
 
     val meta_write  = DecoupledIO(new ICacheMetaWriteBundle)
     val data_write  = DecoupledIO(new ICacheDataWriteBundle)
@@ -373,7 +373,7 @@ class ICacheMissUnit(edge: TLEdgeOut)(implicit p: Parameters) extends ICacheMiss
   val tl_a_chanel = entries.map(_.io.mem_acquire) ++ prefEntries.map(_.io.mem_hint)
   TLArbiter.lowest(edge, io.mem_acquire, tl_a_chanel:_*)
 
-  TLArbiter.lowest(edge, io.mem_finish,  entries.map(_.io.mem_finish):_*)
+//  TLArbiter.lowest(edge, io.mem_finish,  entries.map(_.io.mem_finish):_*)
 
   io.meta_write     <> meta_write_arb.io.out
   io.data_write     <> refill_arb.io.out

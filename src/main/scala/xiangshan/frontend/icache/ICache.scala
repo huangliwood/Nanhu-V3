@@ -258,7 +258,7 @@ class ICacheMetaArray(parentName:String = "Unknown")(implicit p: Parameters) ext
 
   //Parity Encode
   val write = io.write.bits
-  write_meta_bits := cacheParams.tagCode.encode(ICacheMetadata(tag = write.phyTag, coh = write.coh).asUInt)
+ // write_meta_bits := cacheParams.tagCode.encode(ICacheMetadata(tag = write.phyTag, coh = write.coh).asUInt)
   write_meta_bits := cacheParams.tagCode.encode(ICacheMetadata(tag = write.phyTag).asUInt)
 
   val wayNum   = OHToUInt(io.write.bits.waymask)

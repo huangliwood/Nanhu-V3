@@ -44,21 +44,21 @@ class ICacheMetaRespBundle(implicit p: Parameters) extends ICacheBundle
   val v          = Vec(2, Vec(nWays ,Bool() ))
 
   def tags = VecInit(metaData.map(port => VecInit(port.map( way=> way.tag ))))
-//  def cohs = VecInit(metaData.map(port => VecInit(port.map( way=> way.coh ))))
+  def cohs = VecInit(metaData.map(port => VecInit(port.map( way=> way.coh ))))
 }
 
 class ICacheMetaWriteBundle(implicit p: Parameters) extends ICacheBundle
 {
   val virIdx  = UInt(idxBits.W)
   val phyTag  = UInt(tagBits.W)
-//  val coh     = new ClientMetadata
+  val coh     = new ClientMetadata
   val waymask = UInt(nWays.W)
   val bankIdx = Bool()
 
   def generate(tag:UInt, coh: ClientMetadata, idx:UInt, waymask:UInt, bankIdx: Bool){
     this.virIdx  := idx
     this.phyTag  := tag
-   // this.coh     := coh
+    this.coh     := coh
     this.waymask := waymask
     this.bankIdx   := bankIdx
   }

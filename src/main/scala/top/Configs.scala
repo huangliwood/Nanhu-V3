@@ -32,6 +32,7 @@ import xiangshan.backend.dispatch.DispatchParameters
 import xiangshan.backend.execute.exublock.ExuParameters
 import device.{EnableJtag, XSDebugModuleParams}
 import huancun._
+import coupledL2._
 
 class BaseConfig(n: Int) extends Config((site, here, up) => {
   case XLen => 64
@@ -150,7 +151,16 @@ class MinimalConfig(n: Int = 1) extends Config(
           l3nWays = 8,
           spSize = 2,
         ),
-        L2CacheParamsOpt = None // remove L2 Cache
+        // L2CacheParamsOpt = None // remove L2 Cache
+        // L2CacheParamsOpt = Some(L2Param(
+        //   name = "L2",
+        //   ways = 8,
+        //   sets = 128,
+        //   echoField = Seq(huancun.DirtyField()),
+        //   prefetch = None
+        // )),
+        // L2NBanks = 2,
+        // prefetcher = None // if L2 pf_recv_node does not exist, disable SMS prefetcher
       )
     )
     case SoCParamsKey =>
@@ -217,30 +227,37 @@ class WithNKBL2
     val upParams = up(XSTileKey)
     val l2sets = n * 1024 / banks / ways / 64
     upParams.map(p => p.copy(
-      L2CacheParamsOpt = Some(HCCacheParameters(
+      L2CacheParamsOpt = Some(L2Param(
         name = "L2",
-        level = 2,
+        // level = 2,
         ways = ways,
         sets = l2sets,
-        inclusive = inclusive,
-        alwaysReleaseData = alwaysReleaseData,
-        clientCaches = Seq(CacheParameters(
+        // inclusive = inclusive,
+        // alwaysReleaseData = alwaysReleaseData,
+        // clientCaches = Seq(CacheParameters(
+        //   "dcache",
+        //   sets = 2 * p.dcacheParametersOpt.get.nSets / banks,
+        //   ways = p.dcacheParametersOpt.get.nWays + 2,
+        //   blockGranularity = log2Ceil(2 * p.dcacheParametersOpt.get.nSets / banks),
+        //   aliasBitsOpt = p.dcacheParametersOpt.get.aliasBitsOpt
+        // )),
+        clientCaches = Seq(L1Param(
           "dcache",
           sets = 2 * p.dcacheParametersOpt.get.nSets / banks,
           ways = p.dcacheParametersOpt.get.nWays + 2,
-          blockGranularity = log2Ceil(2 * p.dcacheParametersOpt.get.nSets / banks),
           aliasBitsOpt = p.dcacheParametersOpt.get.aliasBitsOpt
         )),
-        reqField = Seq(PreferCacheField()),
-        echoField = Seq(DirtyField()),
-        prefetch = Some(huancun.prefetch.PrefetchReceiverParams()),
-        enablePerf = true,
-        sramDepthDiv = 2,
-        tagECC = None,
-        dataECC = None,
-        hasShareBus = false,
-        hasMbist = false,
-        simulation = !site(DebugOptionsKey).FPGAPlatform
+        reqField = Seq(utility.ReqSourceField()),
+        echoField = Seq(huancun.DirtyField()),
+        // prefetch = Some(coupledL2.prefetch.PrefetchReceiverParams()),
+        prefetch = None
+        // enablePerf = true,
+        // sramDepthDiv = 2,
+        // tagECC = None,
+        // dataECC = None,
+        // hasShareBus = false,
+        // hasMbist = false,
+        // simulation = !site(DebugOptionsKey).FPGAPlatform
       )),
       L2NBanks = banks
     ))

@@ -11,6 +11,7 @@ import freechips.rocketchip.tilelink._
 import huancun.debug.TLLogger
 import xs.utils.mbist.MBISTInterface
 import huancun.{HCCacheParamsKey, HuanCun}
+import coupledL2.{L2ParamKey, CoupledL2}
 import xs.utils.{ResetGen, DFTResetSignals}
 import system.HasSoCParameter
 import top.BusPerfMonitor
@@ -83,8 +84,8 @@ class XSTile(val parentName:String = "Unknown")(implicit p: Parameters) extends 
   val core = LazyModule(new XSCore(parentName + "core_"))
   val misc = LazyModule(new XSTileMisc())
   val l2cache = coreParams.L2CacheParamsOpt.map(l2param =>
-    LazyModule(new HuanCun(parentName = parentName + "L2_")(new Config((_, _, _) => {
-      case HCCacheParamsKey => l2param.copy(enableTopDown = env.EnableTopDown)
+    LazyModule(new CoupledL2()(new Config((_, _, _) => {
+      case L2ParamKey => l2param.copy(hartIds = Seq(p(XSCoreParamsKey).HartId))
     })))
   )
 
@@ -137,13 +138,25 @@ class XSTile(val parentName:String = "Unknown")(implicit p: Parameters) extends 
   l2cache match {
     case Some(l2) =>
       misc.l2_binder.get :*= l2.node :*= TLBuffer() :*= TLBuffer() :*= misc.l1_xbar
-      l2.pf_recv_node.map(recv => {
-        println("Connecting L1 prefetcher to L2!")
-        recv := core.exuBlock.memoryBlock.pf_sender_opt.get
-      })
+      // l2.pf_recv_node.map(recv => {
+      //   println("Connecting L1 prefetcher to L2!")
+      //   // recv := core.exuBlock.memoryBlock.pf_sender_opt.get
+      //   // recv := None
+      // })
     case None =>
   }
 
+  // l2cache match {
+  //   case Some(l2) =>
+  //     misc.l2_binder.get :*= l2.node :*= misc.l1_xbar
+  //     l2.pf_recv_node.map(recv => {
+  //       println("Connecting L1 prefetcher to L2!")
+  //       recv := core.memBlock.pf_sender_opt.get
+  //     })
+  //   case None =>
+  //     val dummyMatch = WireDefault(false.B)
+  //     ExcitingUtils.addSource(dummyMatch, s"L2MissMatch_${p(XSCoreParamsKey).HartId}", ExcitingUtils.Perf, true)
+  // }
   misc.i_mmio_port := core.frontend.instrUncache.clientNode
   misc.d_mmio_port := core.exuBlock.memoryBlock.uncache.clientNode
 
@@ -165,21 +178,25 @@ class XSTileImp(outer: XSTile) extends LazyHardenModuleImp(outer) {
   outer.core.module.io.hartId := io.hartId
   outer.core.module.io.dfx_reset := io.dfx_reset
   io.cpu_halt := outer.core.module.io.cpu_halt
-  if(outer.l2cache.isDefined){
-    outer.core.module.io.perfEvents.zip(outer.l2cache.get.module.io.perfEvents.flatten).foreach(x => x._1.value := x._2)
-  }
-  else {
-    outer.core.module.io.perfEvents <> DontCare
-  }
+  // TODO: replace Coupled L2
+  // if(outer.l2cache.isDefined){
+  //   outer.core.module.io.perfEvents.zip(outer.l2cache.get.module.io.perfEvents.flatten).foreach(x => x._1.value := x._2)
+  // }
+  // else {
+  //   outer.core.module.io.perfEvents <> DontCare
+  // }
+  outer.core.module.io.perfEvents <> DontCare
 
   outer.misc.module.beu_errors.icache <> outer.core.module.io.beu_errors.icache
   outer.misc.module.beu_errors.dcache <> outer.core.module.io.beu_errors.dcache
-  if(outer.l2cache.isDefined){
-    outer.misc.module.beu_errors.l2.ecc_error.valid := outer.l2cache.get.module.io.ecc_error.valid
-    outer.misc.module.beu_errors.l2.ecc_error.bits := outer.l2cache.get.module.io.ecc_error.bits
-  } else {
-    outer.misc.module.beu_errors.l2 <> 0.U.asTypeOf(outer.misc.module.beu_errors.l2)
-  }
+  // TODO: replace Coupled L2
+  // if(outer.l2cache.isDefined){
+  //   outer.misc.module.beu_errors.l2.ecc_error.valid := outer.l2cache.get.module.io.ecc_error.valid
+  //   outer.misc.module.beu_errors.l2.ecc_error.bits := outer.l2cache.get.module.io.ecc_error.bits
+  // } else {
+  //   outer.misc.module.beu_errors.l2 <> 0.U.asTypeOf(outer.misc.module.beu_errors.l2)
+  // }
+  outer.misc.module.beu_errors.l2 <> 0.U.asTypeOf(outer.misc.module.beu_errors.l2)
 
   val coreMbistIntf = if(outer.coreParams.hasMbist && outer.coreParams.hasShareBus){
     val params = outer.core.module.mbistPipeline.get.bd.params
@@ -200,28 +217,29 @@ class XSTileImp(outer: XSTile) extends LazyHardenModuleImp(outer) {
     None
   }
 
-  val l2MbistIntf = if(outer.l2cache.isDefined){
-    if(p(XSCoreParamsKey).L2CacheParamsOpt.get.hasMbist && p(XSCoreParamsKey).L2CacheParamsOpt.get.hasShareBus){
-      val params = outer.l2cache.get.module.l2TopPipeLine.get.bd.params
-      val node = outer.l2cache.get.module.l2TopPipeLine.get.node
-      val intf = Some(Module(new MBISTInterface(
-        params = Seq(params),
-        ids = Seq(node.children.flatMap(_.array_id)),
-        name = s"MBIST_intf_l2",
-        pipelineNum = 1
-      )))
-      intf.get.toPipeline.head <> outer.l2cache.get.module.l2pipePorts.get
-      outer.l2cache.get.module.l2TopPipeLine.get.genCSV(intf.get.info, "MBIST_L2")
-      intf.get.mbist := DontCare
-      dontTouch(intf.get.mbist)
-      //TODO: add mbist controller connections here
-      intf
-    } else {
-      None
-    }
-  } else {
-    None
-  }
+  // val l2MbistIntf = if(outer.l2cache.isDefined){
+  //   if(p(XSCoreParamsKey).L2CacheParamsOpt.get.hasMbist && p(XSCoreParamsKey).L2CacheParamsOpt.get.hasShareBus){
+  //     val params = outer.l2cache.get.module.l2TopPipeLine.get.bd.params
+  //     val node = outer.l2cache.get.module.l2TopPipeLine.get.node
+  //     val intf = Some(Module(new MBISTInterface(
+  //       params = Seq(params),
+  //       ids = Seq(node.children.flatMap(_.array_id)),
+  //       name = s"MBIST_intf_l2",
+  //       pipelineNum = 1
+  //     )))
+  //     intf.get.toPipeline.head <> outer.l2cache.get.module.l2pipePorts.get
+  //     outer.l2cache.get.module.l2TopPipeLine.get.genCSV(intf.get.info, "MBIST_L2")
+  //     intf.get.mbist := DontCare
+  //     dontTouch(intf.get.mbist)
+  //     //TODO: add mbist controller connections here
+  //     intf
+  //   } else {
+  //     None
+  //   }
+  // } else {
+  //   None
+  // }
+  val l2MbistIntf = None
 
   val mbistBroadCastToCore = if(outer.coreParams.hasMbist) {
     val res = Some(Wire(new BroadCastBundle))
@@ -231,13 +249,14 @@ class XSTileImp(outer: XSTile) extends LazyHardenModuleImp(outer) {
     None
   }
   val mbistBroadCastToL2 = if(outer.coreParams.L2CacheParamsOpt.isDefined) {
-    if(outer.coreParams.L2CacheParamsOpt.get.hasMbist){
-      val res = Some(Wire(new BroadCastBundle))
-      outer.l2cache.get.module.dft.get := res.get
-      res
-    } else {
-      None
-    }
+    // if(outer.coreParams.L2CacheParamsOpt.get.hasMbist){
+    //   val res = Some(Wire(new BroadCastBundle))
+    //   outer.l2cache.get.module.dft.get := res.get
+    //   res
+    // } else {
+    //   None
+    // }
+    None
   } else {
     None
   }
@@ -251,7 +270,8 @@ class XSTileImp(outer: XSTile) extends LazyHardenModuleImp(outer) {
       mbistBroadCastToCore.get := dft.get
     }
     if(mbistBroadCastToL2.isDefined){
-      mbistBroadCastToL2.get := dft.get
+      // TODO: replace Coupled L2
+      // mbistBroadCastToL2.get := dft.get
     }
   }
   // Modules are reset one by one

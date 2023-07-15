@@ -29,6 +29,7 @@ import xiangshan.cache.mmu.{L2TLBParameters, TLBParameters}
 import freechips.rocketchip.diplomacy.AddressSet
 import system.SoCParamsKey
 import huancun._
+import coupledL2._
 import huancun.debug._
 import xiangshan.mem.prefetch.{PrefetcherParams, SMSParams}
 
@@ -125,8 +126,8 @@ case class XSCoreParameters
       (preds, ras.io.out)
     }),
   IBufSize: Int = 48,
-  DecodeWidth: Int = 6,
-  RenameWidth: Int = 6,
+  DecodeWidth: Int = 4,
+  RenameWidth: Int = 4,
   CommitWidth: Int = 6,
   FtqSize: Int = 64,
   EnableLoadFastWakeUp: Boolean = true, // NOTE: not supported now, make it false
@@ -147,7 +148,9 @@ case class XSCoreParameters
   memRsDepth:Int = 48,
   rsBankNum:Int = 4,
   exuParameters: ExuParameters = ExuParameters(),
-  prefetcher: Option[PrefetcherParams] = Some(SMSParams()),
+  // TODO: replace Coupled L2
+  // prefetcher: Option[PrefetcherParams] = Some(SMSParams()),
+  prefetcher: Option[PrefetcherParams] = None,
   LoadPipelineWidth: Int = 2,
   StorePipelineWidth: Int = 2,
   StoreBufferSize: Int = 16,
@@ -212,7 +215,7 @@ case class XSCoreParameters
     nMissEntries = 2,
     nProbeEntries = 2,
     nPrefetchEntries = 2,
-    hasPrefetch = true,
+    hasPrefetch = false,
   ),
   dcacheParametersOpt: Option[DCacheParameters] = Some(DCacheParameters(
     tagECC = Some("secded"),
@@ -222,13 +225,13 @@ case class XSCoreParameters
     nProbeEntries = 8,
     nReleaseEntries = 18
   )),
-  L2CacheParamsOpt: Option[HCCacheParameters] = Some(HCCacheParameters(
+  L2CacheParamsOpt: Option[L2Param] = Some(L2Param(
     name = "l2",
-    level = 2,
+    // level = 2,
     ways = 8,
     sets = 1024,// default 512KB L2
-    hasShareBus = true,
-    prefetch = Some(huancun.prefetch.PrefetchReceiverParams())
+    // hasShareBus = true,
+    prefetch = Some(coupledL2.prefetch.PrefetchReceiverParams())
   )),
   L2NBanks: Int = 1,
   usePTWRepeater: Boolean = false,

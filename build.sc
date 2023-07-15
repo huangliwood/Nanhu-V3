@@ -117,6 +117,15 @@ object xsutils extends XSModule with SbtModule {
   )
 }
 
+object utility extends XSModule with SbtModule {
+
+  override def millSourcePath = os.pwd / "utility"
+
+  override def moduleDeps = super.moduleDeps ++ Seq(
+    rocketchip
+  )
+}
+
 object huancun extends XSModule with SbtModule {
 
   override def millSourcePath = os.pwd / "huancun"
@@ -127,7 +136,17 @@ object huancun extends XSModule with SbtModule {
   )
 }
 
+object coupledL2 extends XSModule with SbtModule {
 
+  override def millSourcePath = os.pwd / "coupledL2"
+
+  override def moduleDeps = super.moduleDeps ++ Seq(
+    rocketchip,
+    huancun,
+    xsutils,
+    utility
+  )
+}
 
 object difftest extends XSModule with SbtModule {
   override def millSourcePath = os.pwd / "difftest"
@@ -142,8 +161,10 @@ trait CommonXiangShan extends XSModule with SbtModule { m =>
   def rocketModule: PublishModule
   def difftestModule: PublishModule
   def huancunModule: PublishModule
+  def coupledL2Module: PublishModule
   def fudianModule: PublishModule
   def xsutilsModule: PublishModule
+  def utilityModule: PublishModule
 
   override def millSourcePath = os.pwd
 
@@ -156,7 +177,9 @@ trait CommonXiangShan extends XSModule with SbtModule { m =>
     difftestModule,
     huancunModule,
     fudianModule,
-    xsutilsModule
+    xsutilsModule,
+    coupledL2Module,
+    utilityModule
   )
 
   object test extends Tests with TestModule.ScalaTest {
@@ -177,4 +200,6 @@ object XiangShan extends CommonXiangShan {
   override def huancunModule = huancun
   override def fudianModule = fudian
   override def xsutilsModule = xsutils
+  override def coupledL2Module = coupledL2
+  override def utilityModule = utility
 }

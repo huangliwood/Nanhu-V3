@@ -18,7 +18,7 @@
 	url = https://github.com/Siudya/xs-utils
 [submodule "coupledL2"]
 	path = coupledL2
-	url = https://github.com/OpenXiangShan/coupledL2.git
+	url = https://github.com/BNWeee/CoupledL2.git
 [submodule "utility"]
 	path = utility
 	url = https://github.com/OpenXiangShan/utility

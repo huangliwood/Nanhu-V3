@@ -150,7 +150,7 @@ case class XSCoreParameters
   exuParameters: ExuParameters = ExuParameters(),
   // TODO: replace Coupled L2
   // prefetcher: Option[PrefetcherParams] = Some(SMSParams()),
-  prefetcher: Option[PrefetcherParams] = None,
+  prefetcher: Option[PrefetcherParams] = Some(SMSParams()),
   LoadPipelineWidth: Int = 2,
   StorePipelineWidth: Int = 2,
   StoreBufferSize: Int = 16,

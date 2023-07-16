@@ -249,8 +249,9 @@ class WithNKBL2
         )),
         reqField = Seq(utility.ReqSourceField()),
         echoField = Seq(huancun.DirtyField()),
-        // prefetch = Some(coupledL2.prefetch.PrefetchReceiverParams()),
-        prefetch = None
+        prefetch = Some(coupledL2.prefetch.PrefetchReceiverParams()),
+        elaboratedTopDown = false,
+        // prefetch = None
         // enablePerf = true,
         // sramDepthDiv = 2,
         // tagECC = None,

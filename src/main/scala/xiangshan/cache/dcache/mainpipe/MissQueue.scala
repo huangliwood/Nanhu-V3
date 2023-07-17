@@ -428,6 +428,10 @@ class MissEntry(edge: TLEdgeOut)(implicit p: Parameters) extends DCacheModule {
   io.mem_acquire.bits.user.lift(PreferCacheKey).foreach(_ := false.B)
   require(nSets <= 256)
 
+  XSPerfAccumulate("missQueue_store_only", io.l2_pf_store_only)
+  XSPerfAccumulate("missQueue_trigger_prefetch", Mux(io.l2_pf_store_only, req.isStore, true.B))
+  XSPerfAccumulate("missQueue_trigger_prefetch_fire", io.mem_acquire.fire() && Mux(io.l2_pf_store_only, req.isStore, true.B))
+
   io.mem_grant.ready := !w_grantlast && s_acquire
 
   val grantack = RegEnable(edge.GrantAck(io.mem_grant.bits), io.mem_grant.fire())

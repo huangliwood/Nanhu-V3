@@ -64,7 +64,7 @@ class FrontendImp (outer: Frontend) extends LazyModuleImp(outer)
     }
   })
   //fence.i signals bundle not used, tie to default value
-  io.fencei.done := true.B
+  //io.fencei.done := true.B
   //decouped-frontend modules
   val instrUncache = outer.instrUncache.module
   val icache       = outer.icache.module
@@ -183,7 +183,8 @@ class FrontendImp (outer: Frontend) extends LazyModuleImp(outer)
   io.error <> RegNext(RegNext(icache.io.error))
 
   icache.io.hartId := io.hartId
-
+  icache.io.fencei <> io.fencei
+  
   val frontendBubble = PopCount((0 until DecodeWidth).map(i => io.backend.cfVec(i).ready && !ibuffer.io.out(i).valid))
   XSPerfAccumulate("FrontendBubble", frontendBubble)
   io.frontendInfo.ibufFull := RegNext(ibuffer.io.full)

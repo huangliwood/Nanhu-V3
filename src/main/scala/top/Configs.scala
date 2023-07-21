@@ -251,6 +251,7 @@ class WithNKBL2
         echoField = Seq(huancun.DirtyField()),
         prefetch = Some(coupledL2.prefetch.HyperPrefetchParams()),
         elaboratedTopDown = false,
+        sppMultiLevelRefill = Some(coupledL2.prefetch.PrefetchReceiverParams()),
         // prefetch = None
         // enablePerf = true,
         // sramDepthDiv = 2,

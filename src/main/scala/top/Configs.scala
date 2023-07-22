@@ -287,6 +287,8 @@ class WithNKBL3(n: Int, ways: Int = 8, inclusive: Boolean = true, banks: Int = 1
             blockGranularity = log2Ceil(clientDirBytes / core.L2NBanks / l2params.ways / 64 / tiles.size)
           )
         },
+        prefetch=None,
+        prefetchRecv = Some(huancun.prefetch.PrefetchReceiverParams()),
         enablePerf = true,
         ctrl = None,
         sramClkDivBy2 = true,

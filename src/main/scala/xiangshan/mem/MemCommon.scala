@@ -67,6 +67,8 @@ class LsPipelineBundle(implicit p: Parameters) extends XSBundle {
 
   //softprefetch
   val isSoftPrefetch = Bool()
+  //hardwarePrefetch
+  val isHWPrefetch = Bool()
 
   // For debug usage
   val isFirstIssue = Bool()
@@ -92,6 +94,7 @@ class LqWriteBundle(implicit p: Parameters) extends LsPipelineBundle {
     forwardMask := input.forwardMask
     forwardData := input.forwardData
     isSoftPrefetch := input.isSoftPrefetch
+    isHWPrefetch := input.isHWPrefetch
     isFirstIssue := input.isFirstIssue
 
     lq_data_wen_dup := DontCare

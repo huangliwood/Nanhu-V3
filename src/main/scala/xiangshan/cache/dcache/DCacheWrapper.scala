@@ -415,6 +415,13 @@ class DCacheLoadIO(implicit p: Parameters) extends DCacheWordIO
   val debug_s1_hit_way = Input(UInt(nWays.W))
 }
 
+class DCacheToPrefetchIO(implicit p: Parameters) extends DCacheWordIO
+{
+  val s1_kill  = Output(Bool())
+  val s2_kill  = Output(Bool())
+  val s1_paddr = Output(UInt(PAddrBits.W))
+}
+
 class DCacheLineIO(implicit p: Parameters) extends DCacheBundle
 {
   val req  = DecoupledIO(new DCacheLineReq)

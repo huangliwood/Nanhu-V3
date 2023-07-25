@@ -72,7 +72,7 @@ case class XSCoreParameters
   RasSize: Int = 32,
   CacheLineSize: Int = 512,
   FtbWays: Int = 4,
-  hasMbist:Boolean = true,
+  hasMbist:Boolean = false,
   hasShareBus:Boolean = false,
   bootAddress:Long = 0x10000000L,
   TageTableInfos: Seq[Tuple3[Int,Int,Int]] =
@@ -138,6 +138,13 @@ case class XSCoreParameters
   StoreQueueSize: Int = 64,
   StoreQueueNWriteBanks: Int = 8,
   RobSize: Int = 256,
+
+  L1DPrefetchPipelineWidth: Int = 1,
+  RptTimeMax: Int = 1024, //tjz
+  SbpPrefetchSize: Int = 2, //tjz
+  L1dpbSize: Int = 16, //tjz
+  StrideOldListSize: Int = 16, //tjz
+
   dpParams: DispatchParameters = DispatchParameters(
     IntDqSize = 16,
     FpDqSize = 16,
@@ -231,7 +238,8 @@ case class XSCoreParameters
     ways = 8,
     sets = 1024,// default 512KB L2
     // hasShareBus = true,
-    prefetch = Some(coupledL2.prefetch.PrefetchReceiverParams())
+    prefetch = Some(coupledL2.prefetch.PrefetchReceiverParams()),
+    elaboratedTopDown=false
   )),
   L2NBanks: Int = 1,
   usePTWRepeater: Boolean = false,
@@ -352,6 +360,13 @@ trait HasXSParameter {
   val NRPhyRegs = coreParams.NRPhyRegs
   val PhyRegIdxWidth = log2Up(NRPhyRegs)
   val RobSize = coreParams.RobSize
+
+  val L1dpbSize = coreParams.L1dpbSize //tjz
+  val StrideOldListSize = coreParams.StrideOldListSize //tjz
+  val RptTimeMax = coreParams.RptTimeMax //tjz
+  val SbpPrefetchSize = coreParams.SbpPrefetchSize //tjz
+  val L1DPrefetchPipelineWidth = coreParams.L1DPrefetchPipelineWidth
+
   val IntRefCounterWidth = log2Ceil(RobSize + 1)
   val LoadQueueSize = coreParams.LoadQueueSize
   val LoadQueueNWriteBanks = coreParams.LoadQueueNWriteBanks

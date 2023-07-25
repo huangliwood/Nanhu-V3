@@ -80,7 +80,7 @@ class MinimalConfig(n: Int = 1) extends Config(
           LsDqSize = 12
         ),
         exuParameters = ExuParameters(),
-        prefetcher = None,
+        prefetcher = Some(SMSParams()),
         icacheParameters = ICacheParameters(
           nSets = 64, // 16KB ICache
           tagECC = Some("parity"),
@@ -180,6 +180,8 @@ class MinimalConfig(n: Int = 1) extends Config(
               aliasBitsOpt = None
             )
           },
+          hasMbist = false,
+          hasShareBus = false,
           simulation = !site(DebugOptionsKey).FPGAPlatform
         )),
         L3NBanks = 1
@@ -253,7 +255,7 @@ class WithNKBL2
         echoField = Seq(huancun.DirtyField()),
         // prefetch = Some(coupledL2.prefetch.PrefetchReceiverParams()),
         prefetch = Some(coupledL2.prefetch.PrefetchReceiverParams()),
-        elaboratedTopDown = false
+        elaboratedTopDown = false,
         // enablePerf = true,
         // sramDepthDiv = 2,
         // tagECC = None,

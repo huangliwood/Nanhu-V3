@@ -33,7 +33,7 @@ import xiangshan.backend.rob.RobLsqIO
 import xiangshan.cache._
 import xiangshan.cache.mmu.{BTlbPtwIO, TLB, TlbReplace}
 import xiangshan.mem._
-import xiangshan.mem.prefetch.{BasePrefecher, SMSParams, SMSPrefetcher}
+import xiangshan.mem.prefetch.{BasePrefecher, L1PrefetchReq, SMSParams, SMSPrefetcher}
 import xs.utils.mbist.MBISTPipeline
 import xs.utils.{DelayN, ParallelPriorityMux, RegNextN, ValidIODelay}
 
@@ -442,6 +442,8 @@ class MemBlockImp(outer: MemBlock) extends BasicExuBlockImp(outer)
         pcDelay1Bits,
         pcDelay2Bits)
     })
+    loadUnits(i).io.prefetch_req.valid := false.B
+    loadUnits(i).io.prefetch_req.bits := 0.U.asTypeOf(new L1PrefetchReq())
 
     // load to load fast forward: load(i) prefers data(i)
     val fastPriority = (i until exuParameters.LduCnt) ++ (0 until i)

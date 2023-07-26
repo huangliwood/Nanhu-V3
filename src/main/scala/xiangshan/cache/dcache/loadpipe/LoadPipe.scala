@@ -71,7 +71,7 @@ class LoadPipe(id: Int)(implicit p: Parameters) extends DCacheModule with HasPer
   val nacked_ready     = true.B
 
   // ready can wait for valid
-  io.lsu.req.ready := (!io.nack && not_nacked_ready) || (io.nack && nacked_ready)
+  io.lsu.req.ready := ((!io.nack && not_nacked_ready) || (io.nack && nacked_ready)) && !io.lsu.req.bits.isPrefetch(io.lsu.req.bits.cmd)
   io.meta_read.valid := io.lsu.req.fire() && !io.nack
   io.tag_read.valid := io.lsu.req.fire() && !io.nack
 

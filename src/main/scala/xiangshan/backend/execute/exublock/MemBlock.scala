@@ -33,7 +33,7 @@ import xiangshan.backend.rob.RobLsqIO
 import xiangshan.cache._
 import xiangshan.cache.mmu.{BTlbPtwIO, TLB, TlbReplace}
 import xiangshan.mem._
-import xiangshan.mem.prefetch.{BasePrefecher, L1PrefetchReq, SMSParams, SMSPrefetcher}
+import xiangshan.mem.prefetch.{BasePrefecher, L1PrefetchReq, SMSParams, SMSPrefetcher,L1PrefetchFuzzer}
 import xs.utils.mbist.MBISTPipeline
 import xs.utils.{DelayN, ParallelPriorityMux, RegNextN, ValidIODelay}
 
@@ -442,8 +442,9 @@ class MemBlockImp(outer: MemBlock) extends BasicExuBlockImp(outer)
         pcDelay1Bits,
         pcDelay2Bits)
     })
-    loadUnits(i).io.prefetch_req.valid := false.B
-    loadUnits(i).io.prefetch_req.bits := 0.U.asTypeOf(new L1PrefetchReq())
+
+//    loadUnits(i).io.prefetch_req.valid := false.B
+//    loadUnits(i).io.prefetch_req.bits := 0.U.asTypeOf(new L1PrefetchReq())
 
     // load to load fast forward: load(i) prefers data(i)
     val fastPriority = (i until exuParameters.LduCnt) ++ (0 until i)
@@ -506,6 +507,22 @@ class MemBlockImp(outer: MemBlock) extends BasicExuBlockImp(outer)
     lduWritebacks(i).bits.uop.cf.trigger.backendCanFire  := triggerCanFireVec
     XSDebug(lduWritebacks(i).bits.uop.cf.trigger.getBackendCanFire && lduWritebacks(i).valid, p"Debug Mode: Load Inst No.${i}" +
     p"has trigger fire vec ${lduWritebacks(i).bits.uop.cf.trigger.backendCanFire}\n")
+  }
+  // l1 pf fuzzer interface
+  val DebugEnableL1PFFuzzer = true
+  if (DebugEnableL1PFFuzzer) {
+    // l1 pf req fuzzer
+    val fuzzer = Module(new L1PrefetchFuzzer())
+    fuzzer.io.vaddr := DontCare
+    fuzzer.io.paddr := DontCare
+    dontTouch(fuzzer.io)
+    // override load_unit prefetch_req
+    loadUnits.foreach(load_unit => {
+      load_unit.io.prefetch_req.valid := fuzzer.io.req.valid
+      load_unit.io.prefetch_req.bits := fuzzer.io.req.bits
+    })
+
+    fuzzer.io.req.ready := true.B
   }
   // Prefetcher
   prefetcherOpt.foreach(pf => {

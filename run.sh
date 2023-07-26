@@ -11,7 +11,9 @@ MEM_USE=2/3
 DYN_MEMSIZE=0
 SIMULATOR="emu"
 USE_VCS=0
+USE_VERILATER=1
 VCS_OUTPUT="sim"
+CMD_FINISH_MSG=""
 #LOG
 VERBOSE=1
 LOGGED=0
@@ -173,14 +175,14 @@ run_cmd ()
         echo $LOG
         $1 2>&1 | tee $LOG
         res=$?
-
         [[ -n "$(grep -o --color -e "failed" -e "Error" -e "ABORT" $LOG)" ]] && res1=1
+        [[ -n "$CMD_FINISH_MSG" ]] && [[ -n "$(grep -o --color -e "$CMD_FINISH_MSG" $LOG)" ]] && res1=0
     else
         $1 >/dev/null 2>&1
     fi
     # Command error
 
-#    echo "res : $res $res1 $4"
+    #    echo "res : $res $res1 $4"
     if [[ ! $4 ]] && ( [[ $res -eq 0 ]] || [[ $res1 -eq 0 ]] ); then
         echo -e "${PURPLE}[DONE] $2 ${NC}"
         [[ $LOGGED -eq 1 ]] && echo -e "[LOGS] $LOG${NC}"
@@ -240,8 +242,10 @@ fun_build(){
 
     LOG_PATH=$PRO_PATH/logs/compile && LOG=$LOG_PATH/$TIMESTAMP.log
     [ $FAST_COMPILE -eq 1 ] && echo "${BLUE}Fast Compile${NC}" && rm $OUTPUT_FILE/emu
-    [ $USE_VCS ] && LOGGED=1 && run_cmd "make $SIMULATOR CONFIG=${1} WITH_DRAMSIM3=$WITH_DRAMSIM3 EMU_TRACE=1 EMU_THREADS=$EMU_THREADS -j$(fun_checkCore)" "compile simulater" $PRO_PATH 1
-    [ $USE_VERILATER ] && LOGGED=1 && run_cmd "make $SIMULATOR CONFIG=${1} WITH_DRAMSIM3=$WITH_DRAMSIM3 EMU_TRACE=1 EMU_THREADS=$EMU_THREADS -j$(fun_checkCore)" "compile simulater" $PRO_PATH
+
+    CMD_FINISH_MSG="../simv up to date"
+    [ $USE_VCS -eq 1 ] && LOGGED=1 && run_cmd "make $SIMULATOR CONFIG=${1} WITH_DRAMSIM3=$WITH_DRAMSIM3 EMU_TRACE=1 EMU_THREADS=$EMU_THREADS -j$(fun_checkCore)" "compile simulater" $PRO_PATH 1
+    [ $USE_VERILATER -eq 1 ] && LOGGED=1 && run_cmd "make $SIMULATOR CONFIG=${1} WITH_DRAMSIM3=$WITH_DRAMSIM3 EMU_TRACE=1 EMU_THREADS=$EMU_THREADS -j$(fun_checkCore)" "compile simulater" $PRO_PATH
 #    $USE_VCS && mv $PRO_PATH/difftest/simv $OUTPUT_FILE
     need_rename=0 && [[ $op_openVerdi -eq 1  &&  $op_runSim -eq 1 ]] && need_rename=1
 #     $need_rename && [ ! -d build_latest_tmp ] && rm ./build_latest_tmp/

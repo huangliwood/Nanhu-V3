@@ -150,7 +150,6 @@ case class XSCoreParameters
   exuParameters: ExuParameters = ExuParameters(),
   // TODO: replace Coupled L2
   // prefetcher: Option[PrefetcherParams] = Some(SMSParams()),
-  prefetcher: Option[PrefetcherParams] = Some(SMSParams()),
   LoadPipelineWidth: Int = 2,
   StorePipelineWidth: Int = 2,
   StoreBufferSize: Int = 16,
@@ -262,6 +261,7 @@ trait HasXSParameter {
   val PAddrBits = p(SoCParamsKey).PAddrBits // PAddrBits is Phyical Memory addr bits
 
   val coreParams = p(XSCoreParamsKey)
+  val L2prefetch = p(L2ParamKey).prefetch
   val env = p(DebugOptionsKey)
 
   val XLEN = coreParams.XLEN
@@ -375,7 +375,7 @@ trait HasXSParameter {
   val refillBothTlb = coreParams.refillBothTlb
   val itlbParams = coreParams.itlbParameters
   val ldtlbParams = coreParams.ldtlbParameters
-  val ld_tlb_ports = if(coreParams.prefetcher.nonEmpty) 3 else 2
+  val ld_tlb_ports = if(L2prefetch.nonEmpty) 3 else 2
   val sttlbParams = coreParams.sttlbParameters
   val btlbParams = coreParams.btlbParameters
   val l2tlbParams = coreParams.l2tlbParameters

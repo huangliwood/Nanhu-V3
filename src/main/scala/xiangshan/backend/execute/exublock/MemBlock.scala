@@ -93,8 +93,9 @@ class MemBlock(val parentName:String = "Unknown")(implicit p: Parameters) extend
 
   val dcache = LazyModule(new DCacheWrapper(parentName = parentName + "dcache_"))
   val uncache = LazyModule(new Uncache())
-  val pf_sender_opt = coreParams.prefetcher.get match  {
+  val pf_sender_opt = L2prefetch match  {
     case receive : SMSParams => Some(BundleBridgeSource(() => new PrefetchRecv))
+    case sms_sender_hyper : HyperPrefetchParams => Some(BundleBridgeSource(() => new PrefetchRecv))
     case _ => None
   }
 
@@ -190,7 +191,7 @@ class MemBlockImp(outer: MemBlock) extends BasicExuBlockImp(outer)
   private val storeUnits = Seq.fill(exuParameters.StuCnt)(Module(new StoreUnit))
   private val stdUnits = Seq.fill(exuParameters.StuCnt)(Module(new Std))
   private val stData = stdUnits.map(_.io.out)
-  val prefetcherOpt: Option[BasePrefecher] = coreParams.prefetcher.get match {
+  val prefetcherOpt: Option[BasePrefecher] = L2prefetch match {
     case sms_sender: SMSParams =>
       val sms = Module(new SMSPrefetcher(parentName = outer.parentName + "sms_"))
       sms.io_agt_en := RegNextN(io.csrCtrl.l1D_pf_enable_agt, 2, Some(false.B))
@@ -218,11 +219,11 @@ class MemBlockImp(outer: MemBlock) extends BasicExuBlockImp(outer)
         sender.out.head._1.addr := pf_to_l2.bits
         sender.out.head._1.l2_pf_en := RegNextN(io.csrCtrl.l2_pf_enable, 2, Some(true.B))
         sms.io.enable := RegNextN(io.csrCtrl.l1D_pf_enable, 2, Some(false.B))
-        case None => sms.io.enable := false.B
+        case None => assert(cond = false, "Maybe from Config fault: Open SMS but dont have sms sender&recevier")
       }
-    case None =>
+    case None => 
   }
-  
+
   private val pf_train_on_hit = RegNextN(io.csrCtrl.l1D_pf_train_on_hit, 2, Some(true.B))
 
   loadUnits.zipWithIndex.map(x => x._1.suggestName("LoadUnit_"+x._2))

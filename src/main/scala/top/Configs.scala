@@ -78,7 +78,6 @@ class MinimalConfig(n: Int = 1) extends Config(
           LsDqSize = 12
         ),
         exuParameters = ExuParameters(),
-        prefetcher = None,
         icacheParameters = ICacheParameters(
           nSets = 64, // 16KB ICache
           tagECC = Some("parity"),
@@ -249,9 +248,21 @@ class WithNKBL2
         )),
         reqField = Seq(utility.ReqSourceField()),
         echoField = Seq(huancun.DirtyField()),
-        prefetch = Some(coupledL2.prefetch.HyperPrefetchParams()),
         elaboratedTopDown = false,
+        prefetch = Some(coupledL2.prefetch.HyperPrefetchParams()), /*
+        del L2 prefetche recv option, move into: prefetch =  PrefetchReceiverParams
+        prefetch options:
+          SPPParameters          => spp only
+          BOPParameters          => bop only
+          PrefetchReceiverParams => sms+bop
+          HyperPrefetchParams    => spp+bop+sms
+        */
         sppMultiLevelRefill = Some(coupledL2.prefetch.PrefetchReceiverParams()),
+        /*must has spp, otherwise Assert Fail
+        sppMultiLevelRefill options:
+        PrefetchReceiverParams() => spp has cross level refill
+        None                     => spp only refill L2
+        */
         // prefetch = None
         // enablePerf = true,
         // sramDepthDiv = 2,
@@ -289,6 +300,11 @@ class WithNKBL3(n: Int, ways: Int = 8, inclusive: Boolean = true, banks: Int = 1
         },
         prefetch=None,
         prefetchRecv = Some(huancun.prefetch.PrefetchReceiverParams()),
+        /*must has spp, otherwise Assert Fail,must same with L2 sppMultiLevelRefill
+        sppMultiLevelRefill options:
+        PrefetchReceiverParams() => spp has cross level refill
+        None                     => spp only refill L2
+        */
         enablePerf = true,
         ctrl = None,
         sramClkDivBy2 = true,
@@ -325,5 +341,12 @@ class DefaultConfig(n: Int = 1) extends Config(
   new WithNKBL3(6 * 1024, inclusive = false, banks = 4, ways = 6)
     ++ new WithNKBL2(2 * 512, inclusive = false, banks = 4, alwaysReleaseData = true)
     ++ new WithNKBL1D(64)
+    ++ new BaseConfig(n)
+)
+
+class NanHuV3Config(n: Int = 1) extends Config(
+  new WithNKBL3(2 * 1024, inclusive = false, banks = 4, ways = 6)
+    ++ new WithNKBL2(256, inclusive = false, banks = 4, alwaysReleaseData = true)
+    ++ new WithNKBL1D(32)
     ++ new BaseConfig(n)
 )

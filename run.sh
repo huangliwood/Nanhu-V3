@@ -1,5 +1,6 @@
 #!/bin/bash
 PRO_PATH=$(pwd)
+PRO_NAME=$(basename "$pwd")
 ENV_PATH=${PRO_PATH%/*}
 [ -n "$XS_ENV" ] && ENV_PATH=$XS_ENV
 OUTPUT_FILE="build"
@@ -10,10 +11,7 @@ THREADS_USE=1
 MEM_USE=2/3
 DYN_MEMSIZE=0
 SIMULATOR="emu"
-USE_VCS=0
-USE_VERILATER=1
-VCS_OUTPUT="sim"
-CMD_FINISH_MSG=""
+
 #LOG
 VERBOSE=1
 LOGGED=0
@@ -29,22 +27,30 @@ COMPILE_FILE="coremark"
 EMU_ARGS=""
 TEST_FILE="microbench"
 TRACE_BEGIN=00000
-TRACE_END=10000
+TRACE_END=20000
 NUM_CORES=1
 CLEAN=1
 
-#VERDI PARAMETERS
-VERDI_OUTPUT="$PRO_PATH/$OUTPUT_FILE"
-VERDI_FLIST="$VERDI_OUTPUT/firrtl_black_box_resource_files.f"
+#VERDI
+FILE_LIST="cpu_flist.f"
 RC_FILE="$PRO_PATH/tools/verdiRC/l2.rc"
 TIMESTAMP=$(date '+%Y-%m-%d@%H:%M')
+#VCS PARAMETERS
+USE_VCS=0
+VCS_OUTPUT="$PRO_PATH/sim"
+#VERDI PARAMETERS
+VERDI_OUTPUT="$PRO_PATH/$OUTPUT_FILE"
+VERDI_FLIST="$VERDI_OUTPUT/$FILE_LIST"
+
 
 RTL_PATH="$PRO_PATH/rtl"
 #function switch
 op_openVerdi=0
 op_build=0
 op_runSim=0
-cmd_res=0
+#cmd
+CMD_RES=0
+CMD_FINISH_MSG=""
 
 GREEN=$'\e[0;32m'
 RED=$'\e[0;31m'
@@ -147,8 +153,8 @@ function prettytable() {
 print_help ()
 {
     {
-      printf '%s\t%s\n' "Options: " "surport xs-env build shell - let things work more effectively "
-      printf '%s\t%s\n' "-h|H|help:" "help | please source run.sh first!!!"
+      printf '%s\t%s\n' "Options: " "surport vcore-env build shell - let things work more effectively "
+      printf '%s\t%s\n' "-h|H|help:" "help | please source env.sh first!!!"
       printf '%s\t%s\n' "--simv:" "use vcs simulator"
       printf '%s\t%s\n' "--emu:" "use verilator simulator"
       printf '%s\t%s\n' "--verdi:" "open verdi and load lastest generated fsdb file"
@@ -175,30 +181,29 @@ run_cmd ()
         echo $LOG
         $1 2>&1 | tee $LOG
         res=$?
+
         [[ -n "$(grep -o --color -e "failed" -e "Error" -e "ABORT" $LOG)" ]] && res1=1
         [[ -n "$CMD_FINISH_MSG" ]] && [[ -n "$(grep -o --color -e "$CMD_FINISH_MSG" $LOG)" ]] && res1=0
     else
         $1 >/dev/null 2>&1
     fi
-    # Command error
 
     #    echo "res : $res $res1 $4"
+    CMD_RES=0
+    CMD_FINISH_MSG=0
+    LOGGED=0
     if [[ ! $4 ]] && ( [[ $res -eq 0 ]] || [[ $res1 -eq 0 ]] ); then
         echo -e "${PURPLE}[DONE] $2 ${NC}"
         [[ $LOGGED -eq 1 ]] && echo -e "[LOGS] $LOG${NC}"
-        cmd_res=0
     elif [[ $4 -eq 1 ]] && ( [[ $res -eq 0 ]] && [[ $res1 -eq 0 ]] ); then
        echo -e "${PURPLE}[DONE] $2 ${NC}"
        [[ $LOGGED -eq 1 ]] && echo -e "[LOGS] $LOG${NC}"
-       cmd_res=0
-    else
+    else    # Command error
         echo -e "${RED}[ERROR] $2\n${NC}"
-        exit 1
+        CMD_RES=1
         [[ $LOGGED -eq 1 ]] && echo -e "[LOGS] $LOG${NC}"
-        cmd_res=1
+        exit 1
     fi
-    LOGGED=0
-
 }
 fun_checkInput(){
     if [ -z "$2" ];then
@@ -211,19 +216,23 @@ fun_checkCore(){
     echo $(($CORE_NUMS*$THREADS_USE))
 }
 fun_checkEnv(){
-    export NOOP_HOME=$(pwd)
     local ENV_NAME=$(echo $ENV_PATH | rev | cut -d/ -f1 | rev)
     local PRO_NAME=$(echo $PRO_PATH | rev | cut -d/ -f1 | rev)
-    if [ -z ${NEMU_HOME} ];then
-      export NOOP_HOME=$(pwd)
-      export NEMU_HOME=${XS_ENV}/NEMU
-      export AM_HOME=${XS_ENV}/nexus-am
-      export DRAMSIM3_HOME=${XS_ENV}/DRAMsim3
-      echo SET NOOP_HOME \(XiangShan RTL Home\): ${NOOP_HOME}
-      echo SET NEMU_HOME \(NEMU_HOME\): ${NEMU_HOME}
-      echo SET AM_HOME \(AM_HOME\): ${AM_HOME}
-      echo SET DRAMSIM3_HOME \(DRAMSIM3_HOME \): ${DRAMSIM3_HOME}
+
+    if [[ $PRO_NAME == "Nanhu-V3" || $PRO_NAME == "XiangShan" ]]; then
+        export NOOP_HOME=$(pwd)
+    else 
+        export NOOP_HOME=$(pwd)/generators/Nanhu-v3
     fi
+    [[ "$0" != "$BASH_SOURCE" ]] && {
+        export NEMU_HOME=${XS_ENV}/NEMU
+        export AM_HOME=${XS_ENV}/nexus-am
+        export DRAMSIM3_HOME=${XS_ENV}/DRAMsim3
+        echo SET NOOP_HOME \(XiangShan RTL Home\): ${NOOP_HOME}
+        echo SET NEMU_HOME \(NEMU_HOME\): ${NEMU_HOME}
+        echo SET AM_HOME \(AM_HOME\): ${AM_HOME}
+        echo SET DRAMSIM3_HOME \(DRAMSIM3_HOME \): ${DRAMSIM3_HOME}
+    }   
 }
 fun_checkDiskCapacity(){
   echo ""
@@ -243,9 +252,19 @@ fun_build(){
     LOG_PATH=$PRO_PATH/logs/compile && LOG=$LOG_PATH/$TIMESTAMP.log
     [ $FAST_COMPILE -eq 1 ] && echo "${BLUE}Fast Compile${NC}" && rm $OUTPUT_FILE/emu
 
-    CMD_FINISH_MSG="../simv up to date"
-    [ $USE_VCS -eq 1 ] && LOGGED=1 && run_cmd "make $SIMULATOR CONFIG=${1} WITH_DRAMSIM3=$WITH_DRAMSIM3 EMU_TRACE=1 EMU_THREADS=$EMU_THREADS -j$(fun_checkCore)" "compile simulater" $PRO_PATH 1
-    [ $USE_VERILATER -eq 1 ] && LOGGED=1 && run_cmd "make $SIMULATOR CONFIG=${1} WITH_DRAMSIM3=$WITH_DRAMSIM3 EMU_TRACE=1 EMU_THREADS=$EMU_THREADS -j$(fun_checkCore)" "compile simulater" $PRO_PATH
+    LOGGED=1
+    CMD_FINISH_MSG="SimTop.v"
+
+    [ $USE_VCS ] && {
+     LOGGED=1
+     CMD_FINISH_MSG="Verdi KDB elaboration done and the database successfully generated"
+     run_cmd "make $SIMULATOR CONFIG=${1} WITH_DRAMSIM3=$WITH_DRAMSIM3 EMU_TRACE=1 EMU_THREADS=$EMU_THREADS -j$(fun_checkCore)" "compile simulater" $PRO_PATH 1
+    }
+    [ $USE_VERILATER ] && {
+      LOGGED=1
+      CMD_FINISH_MSG="SimTop.v"
+      run_cmd "make $SIMULATOR CONFIG=${1} WITH_DRAMSIM3=$WITH_DRAMSIM3 EMU_TRACE=1 EMU_THREADS=$EMU_THREADS -j$(fun_checkCore)" "compile simulater" $PRO_PATH
+    }
 #    $USE_VCS && mv $PRO_PATH/difftest/simv $OUTPUT_FILE
     need_rename=0 && [[ $op_openVerdi -eq 1  &&  $op_runSim -eq 1 ]] && need_rename=1
 #     $need_rename && [ ! -d build_latest_tmp ] && rm ./build_latest_tmp/
@@ -255,8 +274,7 @@ fun_test(){
     cd $PRO_PATH
     [ ! -d "logs" ] && mkdir logs
     [ -n "$1" ] && TEST_FILE=$1
-    echo $PRO_PATH
-    TEST_FILE_1=$(find $PRO_PATH/ready-to-run -maxdepth 1 -name "$TEST_FILE*.bin" -print)
+    TEST_FILE_1=$(find $NOOP_HOME/ready-to-run -maxdepth 1 -name "$TEST_FILE*.bin" -print)
     ARG=""
     echo $EMU_ARGS
     if [[ $EMU_ARGS != "" ]];then
@@ -270,18 +288,27 @@ fun_test(){
     [ "$TEST_FILE_1" == "" ] && NAME="$1_$NAME"
     echo $TEST_FILE | awk -F " " '{print $1}'
 
-    if [ $USE_VCS -eq 1 ];then
-        RUN=$(realpath $PRO_PATH/sim/rtl/comp/simv)
-        cmd="$RUN +workload=$TEST_FILE +dumpfsdb +dump-wave=fsdb "
-    else
-        RUN=$(realpath $PRO_PATH/$OUTPUT_FILE/$SIMULATOR)
+    [ $USE_VCS ] && {
+        LOGGED=1
+        LOG="$LOG_PATH/$NAME.$(date '+%Y-%m-%d@%H:%M:%S').vcs.log"
+        RUN=$(find $VCS_OUTPUT -name "$SIMULATOR*" -type f -executable)
+        cmd="$RUN +workload=$TEST_FILE +dumpfsdb +dump-wave=fsdb"
+        run_cmd "$cmd" "run vcs simulate test" "$PRO_PATH"
+    }
+    [ $USE_VERILATER ] && {
+        LOGGED=1
+        LOG="$LOG_PATH/$NAME.$(date '+%Y-%m-%d@%H:%M:%S').emu.log"
+        RUN=$(realpath $(find $OUTPUT_FILE -name "$SIMULATOR*"))
         ARG="$ARG --wave-path=$PRO_PATH/$OUTPUT_FILE/$TIMESTAMP.vcd"
         cmd="$RUN -i $TEST_FILE $ARG"
-    fi
-    LOG=$LOG_PATH/$NAME.$(date '+%Y-%m-%d@%H:%M:%S')
-    echo $cmd
-    LOGGED=1 && run_cmd "$cmd" "run simulate test" "$PRO_PATH"
-    [[ $cmd_res -eq 0 ]] && sed -i '/\[PERF \]*/!{H;d};$G' $LOG
+        run_cmd "$cmd" "run emu simulate test" "$PRO_PATH"
+    }
+
+    [[ $CMD_RES -eq 0 ]] && grep -q '\[PERF \]' $LOG && {
+        sed -n '/\[PERF \].*/p' $LOG > temp.log
+        sed '/\[PERF \].*/d' $LOG >> temp.log
+        mv temp.log $LOG
+    }
 }
 fun_getTimeStamp(){
   LAST_MODIFY_TIMESTAMP=$(stat -c %Y "$1")
@@ -319,30 +346,35 @@ fun_openVerdi(){
     rubbish=$(find $PRO_PATH  -maxdepth 5 -name "*verdi*" -o -name "*novas*" | grep $OUTPUT_FILE | xargs)
     [[ ! -f ${RC_FILE} ]] && RC_FILE=$(find $PRO_PATH/tools/verdiRC -type f -name "*.rc" | head -n1)
     [[ ! -f ${RC_FILE} ]] && RC_FILE=""
-    [[ ! $rubbish == "" ]] && run_cmd "rm -rf $rubbish" "rm novas rubbish"
+    [[ ! $rubbish == "" ]] && echo "rm ${GREEN}$rubbish${NC}" && rm -rf $rubbish
 
     if [ "$SIMULATOR" == "emu" ];then
       fun_findlatestVCDFile "$VERDI_OUTPUT"
       [[ -z "$LATEST_FSDB_FILE" ]] && run_cmd "vcd2fsdb $LATEST_VCD_FILE" "vcd2fsdb" "$VERDI_OUTPUT" && LATEST_FSDB_FILE="${VERDI_OUTPUT}/$LATEST_VCD_FILE.fsdb"
     fi
 
-    [ "$(sed -n "/[\w,\/]*\/$OUTPUT_FILE\/*/p" $VERDI_FLIST | xargs)" == "" ] && echo "modify firrtl_black_box_resource_files.f path" \
+    [ "$(sed -n "/[\w,\/]*\/$OUTPUT_FILE\/*/p" $VERDI_FLIST | xargs)" == "" ] && echo "modify ${FILE_LIST} path" \
     && sed -i "s/\/build/\/$OUTPUT_FILE/g" "$VERDI_FLIST"
-
+    cd $OUTPUT_FILE
     [ $SIMULATOR == "emu" ] && cmd="verdi -rcFile ${HOME}/.novas.rc -f $VERDI_FLIST -ssf $LATEST_FSDB_FILE -sswr $RC_FILE"
 
     [ $USE_VCS -eq 1 ] && HAS_FSDB=$(find $PRO_PATH -type f -name "*.fsdb" -a ! -name "stdin.fsdb")
     [ -n "$HAS_FSDB" ] && LATEST_FSDB_FILE=$(ls -lt $PRO_PATH/*.fsdb | head -n1 | awk '{print $9}') && fun_getTimeStamp "$LATEST_FSDB_FILE" && fsdb_timeStamp=$TIMESTAMP
     [ $USE_VCS -eq 1 ] && cmd="verdi  -rcFile ${HOME}/.novas.rc -simflow -simBin ./simv -ssf $LATEST_FSDB_FILE -sswr $RC_FILE"
-
+    [ $USE_VCS -eq 1 ] && VERDI_OUTPUT=$PRO_PATH/sim/rtl/comp
     if [[ -z $op_tlTest ]];then
-      [[ ! -f $PRO_PATH/difftest/src/test/vsrc/vcs/TOP.v ]] && echo -e "\
-      module TOP();\n\
-        SimTop SimTop();\n\
-      endmodule" > $PRO_PATH/difftest/src/test/vsrc/vcs/TOP.v
-      [[ $(find ./ -name firrtl_black_box_resource_files.f | xargs sed -n '/SimTop/p') == "" ]] && realpath ./SimTop.sv >> firrtl_black_box_resource_files.f
-      [[ $(find ./ -name firrtl_black_box_resource_files.f | xargs sed -n '/TOP/p') == "" ]] && realpath ../difftest/src/test/vsrc/vcs/TOP.v >> firrtl_black_box_resource_files.f
-      [[ $(find ./ -name firrtl_black_box_resource_files.f | xargs sed -n '/top/p') == "" ]] && realpath ../difftest/src/test/vsrc/vcs/top.v >> firrtl_black_box_resource_files.f
+      [[ ! -f $PRO_PATH/difftest/src/test/vsrc/vcs/TOP.v ]] && {
+        echo -e "\
+        module TOP();\n\
+            SimTop SimTop();\n\
+        endmodule" > $PRO_PATH/difftest/src/test/vsrc/vcs/TOP.v
+      }
+      [[ $(find ./ -name $FILE_LIST | xargs sed -n '/SimTop/p') == "" ]] && {
+        SIMTOP_FILE=$(find ./ -type f \( -name "SimTop*.v" -o -name "SimTop*.sv" \) -print -quit)
+        [[ ! -z "$SIMTOP_FILE" ]] && realpath "SIMTOP_FILE" >> $FILE_LIST
+      } 
+      [[ $(find ./ -name $FILE_LIST | xargs sed -n '/TOP/p') == "" ]] && realpath ../difftest/src/test/vsrc/vcs/TOP.v >> $FILE_LIST
+      [[ $(find ./ -name $FILE_LIST | xargs sed -n '/top/p') == "" ]] && realpath ../difftest/src/test/vsrc/vcs/top.v >> $FILE_LIST
     fi
 
     run_cmd "$cmd" "open verdi" "$VERDI_OUTPUT"
@@ -405,7 +437,7 @@ fun_main(){
 
 fun_main "$@"
 fun_checkEnv
-[[ $cmd_res -eq 0 ]] && [[ $op_tlTest -eq 1 ]] && fun_tlTest
-[[ $cmd_res -eq 0 ]] && [[ $op_build -eq 1 ]] && fun_build $CONFIG
-[[ $cmd_res -eq 0 ]] && [[ $op_runSim -eq 1 ]] && fun_test $TEST_FILE
-[[ $cmd_res -eq 0 ]] && [[ $op_openVerdi -eq 1 ]]  && fun_checkRC && fun_openVerdi
+[[ $CMD_RES -eq 0 ]] && [[ $op_tlTest -eq 1 ]] && fun_tlTest
+[[ $CMD_RES -eq 0 ]] && [[ $op_build -eq 1 ]] && fun_build $CONFIG
+[[ $CMD_RES -eq 0 ]] && [[ $op_runSim -eq 1 ]] && fun_test $TEST_FILE
+[[ $CMD_RES -eq 0 ]] && [[ $op_openVerdi -eq 1 ]]  && fun_checkRC && fun_openVerdi

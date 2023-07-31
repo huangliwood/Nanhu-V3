@@ -85,18 +85,18 @@ class LoadUnit_S0(implicit p: Parameters) extends XSModule with HasDCacheParamet
   val s0_rsIdx = WireInit(io.rsIdx)
   val s0_sqIdx = WireInit(io.in.bits.uop.sqIdx)
 
-
-  val s0_high_conf_pf_valid = io.prefetchReq.valid && io.prefetchReq.bits.confidence > 0.U;dontTouch(s0_high_conf_pf_valid)
-  val s0_low_conf_pf_valid  = io.prefetchReq.valid && io.prefetchReq.bits.confidence === 0.U;dontTouch(s0_low_conf_pf_valid)
   val s0_l2lForward_valid = io.fastpath.valid
   val s0_intloadIssue_valid = WireInit(io.in.valid)
+  val s0_high_conf_pf_valid = io.prefetchReq.valid && io.prefetchReq.bits.confidence > 0.U;dontTouch(s0_high_conf_pf_valid)
+  val s0_low_conf_pf_valid  = io.prefetchReq.valid && io.prefetchReq.bits.confidence === 0.U;dontTouch(s0_low_conf_pf_valid)
+
 //  val s0_intloadFirstIssue_valid = WireInit(io.in.valid && io.isFirstIssue)
   val s0_high_conf_prf_ready = !s0_l2lForward_valid &&
                                !s0_intloadIssue_valid
   val s0_low_conf_prf_ready = !s0_l2lForward_valid &&
                               !s0_intloadIssue_valid &&
                               !s0_high_conf_pf_valid
-  val s0_hw_pf_select = s0_high_conf_prf_ready && s0_high_conf_pf_valid || s0_low_conf_prf_ready && s0_low_conf_pf_valid
+  val s0_hw_pf_select = (s0_high_conf_prf_ready && s0_high_conf_pf_valid) || (s0_low_conf_prf_ready && s0_low_conf_pf_valid)
 
   val isSoftPrefetch = WireInit(false.B)
   val isSoftPrefetchRead = WireInit(false.B)
@@ -105,7 +105,7 @@ class LoadUnit_S0(implicit p: Parameters) extends XSModule with HasDCacheParamet
   val isPrefetch = isSoftPrefetch||ishwPrefetchRead
 
   val tryFastpath = WireInit(false.B)
-  val s0_valid = s0_intloadIssue_valid || s0_high_conf_pf_valid
+  val s0_valid = s0_intloadIssue_valid || s0_hw_pf_select
   when(s0_intloadIssue_valid){
     s0_vaddr := io.in.bits.src(0) + SignExt(imm12, VAddrBits)
     s0_mask := genWmask(s0_vaddr, io.in.bits.uop.ctrl.fuOpType(1,0))

@@ -15,7 +15,8 @@ class L1PrefetchReq (implicit p: Parameters) extends XSBundle with HasDCachePara
 
   // only index bit is used, do not use tag
   def getVaddr(): UInt = {
-    Cat(alias, paddr(DCacheSameVPAddrLength-1, 0))
+    //Cat(alias, paddr(DCacheSameVPAddrLength-1, 0))//FIXME: seems not right
+    Cat(alias,paddr)
   }
 
   // when l1 cache prefetch req arrives at load unit:

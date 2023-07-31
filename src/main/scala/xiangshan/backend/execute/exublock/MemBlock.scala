@@ -520,7 +520,7 @@ class MemBlockImp(outer: MemBlock) extends BasicExuBlockImp(outer)
     loadUnits.foreach(load_unit => {
       load_unit.io.prefetch_req.valid := fuzzer.io.req.valid
       load_unit.io.prefetch_req.bits := fuzzer.io.req.bits
-      load_unit.io.prefetch_req.bits.paddr := 0x080000000L.U(PAddrBits.W)
+      // load_unit.io.prefetch_req.bits.paddr := 0x080000000L.U(PAddrBits.W)
     })
 
     fuzzer.io.req.ready := true.B

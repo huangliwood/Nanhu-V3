@@ -23,6 +23,7 @@ EMU_THREADS=8
 MinMem=64
 FAST_COMPILE=0
 COMPILE_FILE="coremark"
+USE_VERILATER=0
 #SIM PARAMETERS
 EMU_ARGS=""
 TEST_FILE="microbench"
@@ -30,13 +31,12 @@ TRACE_BEGIN=00000
 TRACE_END=20000
 NUM_CORES=1
 CLEAN=1
-
+USE_VCS=0
 #VERDI
 FILE_LIST="cpu_flist.f"
 RC_FILE="$PRO_PATH/tools/verdiRC/l2.rc"
 TIMESTAMP=$(date '+%Y-%m-%d@%H:%M')
 #VCS PARAMETERS
-USE_VCS=0
 VCS_OUTPUT="$PRO_PATH/sim"
 #VERDI PARAMETERS
 VERDI_OUTPUT="$PRO_PATH/$OUTPUT_FILE"
@@ -260,7 +260,7 @@ fun_build(){
      CMD_FINISH_MSG="Verdi KDB elaboration done and the database successfully generated"
      run_cmd "make $SIMULATOR CONFIG=${1} WITH_DRAMSIM3=$WITH_DRAMSIM3 EMU_TRACE=1 EMU_THREADS=$EMU_THREADS -j$(fun_checkCore)" "compile simulater" $PRO_PATH 1
     }
-    [ $USE_VERILATER ] && {
+    [ $USE_VERILATER -eq 1 ] && {
       LOGGED=1
       CMD_FINISH_MSG="SimTop.v"
       run_cmd "make $SIMULATOR CONFIG=${1} WITH_DRAMSIM3=$WITH_DRAMSIM3 EMU_TRACE=1 EMU_THREADS=$EMU_THREADS -j$(fun_checkCore)" "compile simulater" $PRO_PATH
@@ -273,8 +273,9 @@ fun_build(){
 fun_test(){
     cd $PRO_PATH
     [ ! -d "logs" ] && mkdir logs
-    [ -n "$1" ] && TEST_FILE=$1
-    TEST_FILE_1=$(find $NOOP_HOME/ready-to-run -maxdepth 1 -name "$TEST_FILE*.bin" -print)
+    echo $TEST_FILE
+    TEST_FILE_1=$(find $NOOP_HOME/ready-to-run -maxdepth 1 -name "$TEST_FILE*.bin" -print | awk -F " " '{print $1}')
+
     ARG=""
     echo $EMU_ARGS
     if [[ $EMU_ARGS != "" ]];then
@@ -288,17 +289,17 @@ fun_test(){
     [ "$TEST_FILE_1" == "" ] && NAME="$1_$NAME"
     echo $TEST_FILE | awk -F " " '{print $1}'
 
-    [ $USE_VCS ] && {
+    [ $USE_VCS -eq 1 ] && {
         LOGGED=1
         LOG="$LOG_PATH/$NAME.$(date '+%Y-%m-%d@%H:%M:%S').vcs.log"
         RUN=$(find $VCS_OUTPUT -name "$SIMULATOR*" -type f -executable)
         cmd="$RUN +workload=$TEST_FILE +dumpfsdb +dump-wave=fsdb"
         run_cmd "$cmd" "run vcs simulate test" "$PRO_PATH"
     }
-    [ $USE_VERILATER ] && {
+    [ $USE_VERILATER -eq 1 ] && {
         LOGGED=1
         LOG="$LOG_PATH/$NAME.$(date '+%Y-%m-%d@%H:%M:%S').emu.log"
-        RUN=$(realpath $(find $OUTPUT_FILE -name "$SIMULATOR*"))
+        RUN=$(realpath $(find $OUTPUT_FILE -name "$SIMULATOR*" -type f -executable))
         ARG="$ARG --wave-path=$PRO_PATH/$OUTPUT_FILE/$TIMESTAMP.vcd"
         cmd="$RUN -i $TEST_FILE $ARG"
         run_cmd "$cmd" "run emu simulate test" "$PRO_PATH"
@@ -397,41 +398,73 @@ fun_tlTest(){
 #-------------------main menu-------------------#
 fun_main(){
     set -- $(getopt -o a::b::t::o:c:s:dhC -l simv,emu,verdi,tltest,help -- "$@")
-    echo $1 $2 $3 $4 $5 $6 $7 $8 $9
+
+    args=()
+    INNER_ARGS=""
+    TRACED=0
+    for arg in "$@"; do
+        arg=${arg//\'/}
+        # echo "=== ${arg: 0} ${arg: -1} $TRACED"
+        if [[ "${arg:0:1}" = "|" ]] && [[ $TRACED -eq 0 ]]; then
+            INNER_ARGS=$INNER_ARGS#${arg//\|/}
+            TRACED=1
+        elif [[ "${arg: -1}" = "|" ]] && [[ $TRACED -eq 1 ]]; then
+            INNER_ARGS=$INNER_ARGS#${arg//\|/}
+            args+=("${INNER_ARGS[@]}")
+            TRACED=0
+        elif [[ "$TRACED" -eq 1 ]]; then
+            INNER_ARGS=$INNER_ARGS#$arg
+        else
+            args+=("$arg")
+        fi
+    done
+ 
+    set -- "${args[@]}"
+    echo "${args[@]}"
     while [ -n "$1" ];do
         tmp=${2#*\'}
         ARG=${tmp%\'*}
-        echo "$1 $2 "
+        # echo "$1 $2 "
 
         case "$1" in
-            -h|H|--help) print_help;;
+            # -h|H|--help) print_help;;
             --simv)SIMULATOR="simv" && USE_VCS=1;;
-            --emu) SIMULATOR="emu";;
+            --emu) SIMULATOR="emu" && USE_VERILATER=1;;
             --tltest) op_tlTest=1;;
             --verdi)op_openVerdi=1;;
             -C)CLEAN=true; run_cmd "make clean" "make clean" "$PRO_PATH";;
             -a)[[ -n $ARG ]]&&EMU_ARGS="$ARG"&&echo $EMU_ARGS;;
-            -b)[[ -n $ARG ]]&&CONFIG=$ARG;op_build=1;;
+            -b)[[ -n $ARG ]]&&CONFIG=$ARG;op_build=1;shift 2;;
             -d)WITH_DRAMSIM3=1;;
             -f)FAST_COMPILE=1;;
             -c)COMPILE_FILE=$ARG run_cmd "make " "compile cpp testfile";;
             -o)OUTPUT_FILE=$ARG;;
-            -t)[[ -n $ARG ]]&&TEST_FILE=$ARG;op_runSim=1;;
-#              if [[ $2 == --* ]]; then
-#                  op_runSim=1
-#              else
-#                  ARG=${2#*\'}
-#                  TEST_FILE=${ARG%\'*}
-#                  op_runSim=1
-#                  shift
-#                  echo $ARG
-#              fi
-#              ;;
-            --)shift;break;;
+            -t){
+                IFS='#' read -ra INNER_ARGS_ARRAY <<< "$ARG"
+                set -- $(getopt -o b::e:: -l dump\-wave:bin:: -- "${INNER_ARGS_ARRAY[@]}")
+                while [ -n "$1" ];do
+                    tmp=${2#*\'}
+                    ARG=${tmp%\'*}
+                    case "$1" in
+                        --dump-wave) echo -ne "${PURPLE}enable dump wave${NC}";;
+                        --bin)TEST_FILE=$ARG && echo -ne "${PURPLE}enable dump wave${NC}";;
+                        -b)echo -ne "${PURPLE}[$ARG ${NC},";;
+                        -e)echo -ne "${PURPLE}$ARG] ${NC}";;
+                        ?)break;;
+                    esac
+                    shift 1
+                done
+                echo 
+                
+                op_runSim=1
+                [[ -n $ARG ]]&&TEST_FILE=$ARG;op_runSim=1
+            };;
+
+            --)shift 1;break;;
             ?)echo "$2 miss praramter";;
         esac
-        shift
-#        [[ -n "$ARG" ]] && shift 1
+        shift 1
+        # [[ -n "$ARG" ]] && shift 1
     done
 }
 
@@ -439,5 +472,5 @@ fun_main "$@"
 fun_checkEnv
 [[ $CMD_RES -eq 0 ]] && [[ $op_tlTest -eq 1 ]] && fun_tlTest
 [[ $CMD_RES -eq 0 ]] && [[ $op_build -eq 1 ]] && fun_build $CONFIG
-[[ $CMD_RES -eq 0 ]] && [[ $op_runSim -eq 1 ]] && fun_test $TEST_FILE
+[[ $CMD_RES -eq 0 ]] && [[ $op_runSim -eq 1 ]] && fun_test
 [[ $CMD_RES -eq 0 ]] && [[ $op_openVerdi -eq 1 ]]  && fun_checkRC && fun_openVerdi

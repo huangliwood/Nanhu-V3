@@ -55,5 +55,5 @@ class L1PrefetchFuzzer(implicit p: Parameters) extends DCacheModule{
   io.req.bits.alias := io.req.bits.paddr(13,12)
   io.req.bits.confidence := LFSR64(seed=Some(789L))(4,0) === 0.U
   io.req.bits.is_store := LFSR64(seed=Some(890L))(4,0) === 0.U
-  io.req.valid := LFSR64(seed=Some(901L))(3,0) === 0.U
+  io.req.valid := LFSR64(seed=Some(901L))(4,0) === 1.U
 }

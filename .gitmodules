@@ -3,13 +3,13 @@
 	url = https://github.com/OpenXiangShan/rocket-chip.git
 [submodule "difftest"]
 	path = difftest
-	url = https://github.com/OpenXiangShan/difftest.git
+	url = https://github.com/huangliwood/difftest.git
 [submodule "ready-to-run"]
 	path = ready-to-run
 	url = https://github.com/Siudya/ready-to-run
 [submodule "huancun"]
 	path = huancun
-	url = https://github.com/Siudya/Huancun
+	url = https://github.com/huangliwood/Huancun
 [submodule "fudian"]
 	path = fudian
 	url = https://github.com/Siudya/fudian
@@ -18,7 +18,7 @@
 	url = https://github.com/Siudya/xs-utils
 [submodule "coupledL2"]
 	path = coupledL2
-	url = https://github.com/BNWeee/CoupledL2.git
+	url = https://github.com/huangliwood/CoupledL2.git
 [submodule "utility"]
 	path = utility
-	url = https://github.com/OpenXiangShan/utility
+	url = https://github.com/huangliwood/utility

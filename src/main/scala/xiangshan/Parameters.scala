@@ -158,6 +158,7 @@ case class XSCoreParameters
   // TODO: replace Coupled L2
   // prefetcher: Option[PrefetcherParams] = Some(SMSParams()),
   prefetcher: Option[PrefetcherParams] = None,
+  l1dprefetchRefill: Option[Boolean] = None,
   LoadPipelineWidth: Int = 2,
   StorePipelineWidth: Int = 2,
   StoreBufferSize: Int = 16,

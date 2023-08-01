@@ -11,7 +11,6 @@ THREADS_USE=1
 MEM_USE=2/3
 DYN_MEMSIZE=0
 SIMULATOR="emu"
-
 #LOG
 VERBOSE=1
 LOGGED=0
@@ -19,7 +18,7 @@ LOG_PATH="$PRO_PATH/logs/$(date '+%m-%d')/$OUTPUT_FILE"
 #EMU_Parameters
 CORE_NUMS=$(grep -r "processor" /proc/cpuinfo | wc -l)
 EMU_THREADS=$(( CORE_NUMS * THREADS_USE))
-EMU_THREADS=8
+EMU_THREADS=16
 MinMem=64
 FAST_COMPILE=0
 COMPILE_FILE="coremark"
@@ -173,19 +172,22 @@ print_help ()
 run_cmd ()
 {
     [[ -n "$3" ]] && cd $3
-    echo -e "${PURPLE}[runing] $1${NC}"
     res1=0
     # Run command
     if [[ $LOGGED -eq 1 ]]; then
         [ ! -d $LOG_PATH ] && mkdir -p $LOG_PATH
-        echo $LOG
+        CMD="$1 2>&1 | tee $LOG"
+        echo -e "${PURPLE}[runing] $CMD${NC}"
         $1 2>&1 | tee $LOG
         res=$?
 
         [[ -n "$(grep -o --color -e "failed" -e "Error" -e "ABORT" $LOG)" ]] && res1=1
         [[ -n "$CMD_FINISH_MSG" ]] && [[ -n "$(grep -o --color -e "$CMD_FINISH_MSG" $LOG)" ]] && res1=0
     else
+        CMD="$1 >/dev/null 2>&1"
+        echo -e "${PURPLE}[runing] $CMD${NC}"
         $1 >/dev/null 2>&1
+        res=$?
     fi
 
     #    echo "res : $res $res1 $4"
@@ -193,13 +195,13 @@ run_cmd ()
     CMD_FINISH_MSG=0
     LOGGED=0
     if [[ ! $4 ]] && ( [[ $res -eq 0 ]] || [[ $res1 -eq 0 ]] ); then
-        echo -e "${PURPLE}[DONE] $2 ${NC}"
+        echo -e "${PURPLE}[DONE] $CMD ${NC}"
         [[ $LOGGED -eq 1 ]] && echo -e "[LOGS] $LOG${NC}"
     elif [[ $4 -eq 1 ]] && ( [[ $res -eq 0 ]] && [[ $res1 -eq 0 ]] ); then
-       echo -e "${PURPLE}[DONE] $2 ${NC}"
+       echo -e "${PURPLE}[DONE] $CMD ${NC}"
        [[ $LOGGED -eq 1 ]] && echo -e "[LOGS] $LOG${NC}"
     else    # Command error
-        echo -e "${RED}[ERROR] $2\n${NC}"
+        echo -e "${RED}[ERROR] $CMD\n${NC}"
         CMD_RES=1
         [[ $LOGGED -eq 1 ]] && echo -e "[LOGS] $LOG${NC}"
         exit 1
@@ -255,15 +257,15 @@ fun_build(){
     LOGGED=1
     CMD_FINISH_MSG="SimTop.v"
 
-    [ $USE_VCS ] && {
+    [ $USE_VCS -eq 1 ] && {
      LOGGED=1
      CMD_FINISH_MSG="Verdi KDB elaboration done and the database successfully generated"
-     run_cmd "make $SIMULATOR CONFIG=${1} WITH_DRAMSIM3=$WITH_DRAMSIM3 EMU_TRACE=1 EMU_THREADS=$EMU_THREADS -j$(fun_checkCore)" "compile simulater" $PRO_PATH 1
+     run_cmd "make simv CONFIG=${1} WITH_DRAMSIM3=$WITH_DRAMSIM3 EMU_TRACE=1 EMU_THREADS=$EMU_THREADS -j$(fun_checkCore)" "compile simulater" $PRO_PATH 1
     }
     [ $USE_VERILATER -eq 1 ] && {
       LOGGED=1
       CMD_FINISH_MSG="SimTop.v"
-      run_cmd "make $SIMULATOR CONFIG=${1} WITH_DRAMSIM3=$WITH_DRAMSIM3 EMU_TRACE=1 EMU_THREADS=$EMU_THREADS -j$(fun_checkCore)" "compile simulater" $PRO_PATH
+      run_cmd "make emu CONFIG=${1} WITH_DRAMSIM3=$WITH_DRAMSIM3 EMU_TRACE=1 EMU_THREADS=$EMU_THREADS -j$(fun_checkCore)" "compile simulater" $PRO_PATH
     }
 #    $USE_VCS && mv $PRO_PATH/difftest/simv $OUTPUT_FILE
     need_rename=0 && [[ $op_openVerdi -eq 1  &&  $op_runSim -eq 1 ]] && need_rename=1
@@ -337,48 +339,71 @@ fun_checkRC(){
      fi
 }
 fun_openVerdi(){
-  echo -e "${PURPLE}------------------------------------------------\n*${FUNCNAME}*${NC}"
-    VERBOSE=0
-    if [ ! -d "$VERDI_OUTPUT" ];then
-        echo "need build first"
-        exit 1
-    fi
-
+    echo -e "${PURPLE}------------------------------------------------\n*${FUNCNAME}*${NC}"
     rubbish=$(find $PRO_PATH  -maxdepth 5 -name "*verdi*" -o -name "*novas*" | grep $OUTPUT_FILE | xargs)
     [[ ! -f ${RC_FILE} ]] && RC_FILE=$(find $PRO_PATH/tools/verdiRC -type f -name "*.rc" | head -n1)
     [[ ! -f ${RC_FILE} ]] && RC_FILE=""
     [[ ! $rubbish == "" ]] && echo "rm ${GREEN}$rubbish${NC}" && rm -rf $rubbish
 
-    if [ "$SIMULATOR" == "emu" ];then
-      fun_findlatestVCDFile "$VERDI_OUTPUT"
-      [[ -z "$LATEST_FSDB_FILE" ]] && run_cmd "vcd2fsdb $LATEST_VCD_FILE" "vcd2fsdb" "$VERDI_OUTPUT" && LATEST_FSDB_FILE="${VERDI_OUTPUT}/$LATEST_VCD_FILE.fsdb"
-    fi
+    [ $USE_VERILATER -eq 1 ] &&{
+        if [ ! -d "$VERDI_OUTPUT" ];then
+            echo "need build first"
+            exit 1
+        fi
+        fun_findlatestVCDFile "$VERDI_OUTPUT"
+        [[ -z "$LATEST_FSDB_FILE" ]] && run_cmd "vcd2fsdb $LATEST_VCD_FILE" "vcd2fsdb" "$VERDI_OUTPUT" && LATEST_FSDB_FILE="${VERDI_OUTPUT}/$LATEST_VCD_FILE.fsdb"
+        [ "$(sed -n "/[\w,\/]*\/$OUTPUT_FILE\/*/p" $VERDI_FLIST | xargs)" == "" ] && {
+            echo "modify ${FILE_LIST} path" 
+            sed -i "s/\/build/\/$OUTPUT_FILE/g" "$VERDI_FLIST"
+        }
+        cd $PRO_PATH/$OUTPUT_FILE
 
-    [ "$(sed -n "/[\w,\/]*\/$OUTPUT_FILE\/*/p" $VERDI_FLIST | xargs)" == "" ] && echo "modify ${FILE_LIST} path" \
-    && sed -i "s/\/build/\/$OUTPUT_FILE/g" "$VERDI_FLIST"
-    cd $OUTPUT_FILE
-    [ $SIMULATOR == "emu" ] && cmd="verdi -rcFile ${HOME}/.novas.rc -f $VERDI_FLIST -ssf $LATEST_FSDB_FILE -sswr $RC_FILE"
+        [[ ! -f $PRO_PATH/difftest/src/test/vsrc/vcs/TOP.v ]] && {
+            echo -e "\
+            module TOP();\n\
+                SimTop SimTop();\n\
+            endmodule" > $PRO_PATH/difftest/src/test/vsrc/vcs/TOP.v
+        }
+        [[ $(find ./ -name $FILE_LIST | xargs sed -n '/SimTop/p') == "" ]] && {
+            SIMTOP_FILE=$(find ./ -type f \( -name "SimTop*.v" -o -name "SimTop*.sv" \) -print -quit)
+            [[ ! -z "$SIMTOP_FILE" ]] && realpath "SIMTOP_FILE" >> $FILE_LIST
+        }
+        [[ $(find ./ -name $FILE_LIST | xargs sed -n '/TOP/p') == "" ]] && realpath ../difftest/src/test/vsrc/vcs/TOP.v >> $FILE_LIST
+        [[ $(find ./ -name $FILE_LIST | xargs sed -n '/top/p') == "" ]] && realpath ../difftest/src/test/vsrc/vcs/top.v >> $FILE_LIST
 
-    [ $USE_VCS -eq 1 ] && HAS_FSDB=$(find $PRO_PATH -type f -name "*.fsdb" -a ! -name "stdin.fsdb")
-    [ -n "$HAS_FSDB" ] && LATEST_FSDB_FILE=$(ls -lt $PRO_PATH/*.fsdb | head -n1 | awk '{print $9}') && fun_getTimeStamp "$LATEST_FSDB_FILE" && fsdb_timeStamp=$TIMESTAMP
-    [ $USE_VCS -eq 1 ] && cmd="verdi  -rcFile ${HOME}/.novas.rc -simflow -simBin ./simv -ssf $LATEST_FSDB_FILE -sswr $RC_FILE"
-    [ $USE_VCS -eq 1 ] && VERDI_OUTPUT=$PRO_PATH/sim/rtl/comp
-    if [[ -z $op_tlTest ]];then
-      [[ ! -f $PRO_PATH/difftest/src/test/vsrc/vcs/TOP.v ]] && {
-        echo -e "\
-        module TOP();\n\
-            SimTop SimTop();\n\
-        endmodule" > $PRO_PATH/difftest/src/test/vsrc/vcs/TOP.v
-      }
-      [[ $(find ./ -name $FILE_LIST | xargs sed -n '/SimTop/p') == "" ]] && {
-        SIMTOP_FILE=$(find ./ -type f \( -name "SimTop*.v" -o -name "SimTop*.sv" \) -print -quit)
-        [[ ! -z "$SIMTOP_FILE" ]] && realpath "SIMTOP_FILE" >> $FILE_LIST
-      } 
-      [[ $(find ./ -name $FILE_LIST | xargs sed -n '/TOP/p') == "" ]] && realpath ../difftest/src/test/vsrc/vcs/TOP.v >> $FILE_LIST
-      [[ $(find ./ -name $FILE_LIST | xargs sed -n '/top/p') == "" ]] && realpath ../difftest/src/test/vsrc/vcs/top.v >> $FILE_LIST
-    fi
+        cmd="verdi -rcFile ${HOME}/.novas.rc -f $VERDI_FLIST -ssf $LATEST_FSDB_FILE -sswr $RC_FILE"
+        run_cmd "$cmd" "open verdi" "$VERDI_OUTPUT"
+    }
 
-    run_cmd "$cmd" "open verdi" "$VERDI_OUTPUT"
+    [ $USE_VCS -eq 1 ] && {
+        cd $PRO_PATH/$OUTPUT_FILE
+
+        [ "$(sed -n "/[\w,\/]*\/$OUTPUT_FILE\/*/p" $VERDI_FLIST | xargs)" == "" ] && {
+            echo "modify ${FILE_LIST} path" 
+            sed -i "s/\/build/\/$OUTPUT_FILE/g" "$VERDI_FLIST"
+        }
+
+        [ $USE_VCS -eq 1 ] && HAS_FSDB=$(find $PRO_PATH -type f -name "*.fsdb" -a ! -name "stdin.fsdb")
+        [ -n "$HAS_FSDB" ] && LATEST_FSDB_FILE=$(ls -lt $PRO_PATH/*.fsdb | head -n1 | awk '{print $9}') && fun_getTimeStamp "$LATEST_FSDB_FILE" && fsdb_timeStamp=$TIMESTAMP
+        [ $USE_VCS -eq 1 ] && cmd="verdi  -rcFile ${HOME}/.novas.rc -simflow -simBin ./simv -ssf $LATEST_FSDB_FILE -sswr $RC_FILE"
+        [ $USE_VCS -eq 1 ] && VERDI_OUTPUT=$PRO_PATH/sim/rtl/comp
+        if [[ -z $op_tlTest ]];then
+        [[ ! -f $PRO_PATH/difftest/src/test/vsrc/vcs/TOP.v ]] && {
+            echo -e "\
+            module TOP();\n\
+                SimTop SimTop();\n\
+            endmodule" > $PRO_PATH/difftest/src/test/vsrc/vcs/TOP.v
+        }
+        [[ $(find ./ -name $FILE_LIST | xargs sed -n '/SimTop/p') == "" ]] && {
+            SIMTOP_FILE=$(find ./ -type f \( -name "SimTop*.v" -o -name "SimTop*.sv" \) -print -quit)
+            [[ ! -z "$SIMTOP_FILE" ]] && realpath "SIMTOP_FILE" >> $FILE_LIST
+        } 
+        [[ $(find ./ -name $FILE_LIST | xargs sed -n '/TOP/p') == "" ]] && realpath ../difftest/src/test/vsrc/vcs/TOP.v >> $FILE_LIST
+        [[ $(find ./ -name $FILE_LIST | xargs sed -n '/top/p') == "" ]] && realpath ../difftest/src/test/vsrc/vcs/top.v >> $FILE_LIST
+        fi
+
+        run_cmd "$cmd" "open verdi" "$VERDI_OUTPUT"
+    }
 }
 
 fun_checkDutImg(){
@@ -404,18 +429,21 @@ fun_main(){
     TRACED=0
     for arg in "$@"; do
         arg=${arg//\'/}
-        # echo "=== ${arg: 0} ${arg: -1} $TRACED"
+        # echo "=== ${arg: 0:1} ${arg: -1} $TRACED"
         if [[ "${arg:0:1}" = "|" ]] && [[ $TRACED -eq 0 ]]; then
-            INNER_ARGS=$INNER_ARGS#${arg//\|/}
+            INNER_ARGS=${arg//\|/}
+            # echo "start $INNER_ARGS"
             TRACED=1
-        elif [[ "${arg: -1}" = "|" ]] && [[ $TRACED -eq 1 ]]; then
+        elif [[ "${arg: -1}" = "|" ]] && [[ $TRACED -eq 1 ]]; then 
             INNER_ARGS=$INNER_ARGS#${arg//\|/}
+            # echo "end $INNER_ARGS"
             args+=("${INNER_ARGS[@]}")
             TRACED=0
         elif [[ "$TRACED" -eq 1 ]]; then
             INNER_ARGS=$INNER_ARGS#$arg
-        else
+        elif [ -n "$arg" ]; then
             args+=("$arg")
+            echo "$arg"
         fi
     done
  
@@ -424,38 +452,36 @@ fun_main(){
     while [ -n "$1" ];do
         tmp=${2#*\'}
         ARG=${tmp%\'*}
-        # echo "$1 $2 "
 
         case "$1" in
-            # -h|H|--help) print_help;;
-            --simv)SIMULATOR="simv" && USE_VCS=1;;
+            -h|H|--help) print_help;;
+            --simv) SIMULATOR="simv" && USE_VCS=1;;
             --emu) SIMULATOR="emu" && USE_VERILATER=1;;
             --tltest) op_tlTest=1;;
-            --verdi)op_openVerdi=1;;
+            --verdi) op_openVerdi=1;;
             -C)CLEAN=true; run_cmd "make clean" "make clean" "$PRO_PATH";;
             -a)[[ -n $ARG ]]&&EMU_ARGS="$ARG"&&echo $EMU_ARGS;;
-            -b)[[ -n $ARG ]]&&CONFIG=$ARG;op_build=1;shift 2;;
+            -b)[[ -n $ARG ]]&&CONFIG=$ARG;op_build=1;;
             -d)WITH_DRAMSIM3=1;;
             -f)FAST_COMPILE=1;;
             -c)COMPILE_FILE=$ARG run_cmd "make " "compile cpp testfile";;
             -o)OUTPUT_FILE=$ARG;;
             -t){
                 IFS='#' read -ra INNER_ARGS_ARRAY <<< "$ARG"
-                set -- $(getopt -o b::e:: -l dump\-wave:bin:: -- "${INNER_ARGS_ARRAY[@]}")
+                set -- $(getopt -o b::e:: -l wave,bin -- "${INNER_ARGS_ARRAY[@]}")
                 while [ -n "$1" ];do
                     tmp=${2#*\'}
                     ARG=${tmp%\'*}
                     case "$1" in
-                        --dump-wave) echo -ne "${PURPLE}enable dump wave${NC}";;
+                        --wave)echo -ne "${PURPLE}enable dump wave${NC}";;
                         --bin)TEST_FILE=$ARG && echo -ne "${PURPLE}enable dump wave${NC}";;
-                        -b)echo -ne "${PURPLE}[$ARG ${NC},";;
+                        -b)echo -ne "${PURPLE} wave range [$ARG ${NC},";;
                         -e)echo -ne "${PURPLE}$ARG] ${NC}";;
                         ?)break;;
                     esac
                     shift 1
                 done
                 echo 
-                
                 op_runSim=1
                 [[ -n $ARG ]]&&TEST_FILE=$ARG;op_runSim=1
             };;

@@ -42,8 +42,9 @@ class BaseConfig(n: Int) extends Config((site, here, up) => {
   case PMParameKey => PMParameters()
   case XSTileKey => Seq.tabulate(n){
     i => XSCoreParameters(HartId = i, hasMbist = false, hasShareBus = false,
-    prefetcher = Some(SMSParams()))
-  }
+    prefetcher = Some(SMSParams()),
+    l1dprefetchRefill = Some(true)
+    )}
   case ExportDebug => DebugAttachParams(protocols = Set(JTAG))
   case DebugModuleKey => Some(XSDebugModuleParams(site(XLen)))
   case JtagDTMKey => JtagDTMKey

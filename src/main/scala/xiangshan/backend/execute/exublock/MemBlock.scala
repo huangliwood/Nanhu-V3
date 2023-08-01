@@ -244,6 +244,14 @@ class MemBlockImp(outer: MemBlock) extends BasicExuBlockImp(outer)
         sender.out.head._1.addr := pf_to_l2.bits
         sender.out.head._1.l2_pf_en := RegNextN(io.csrCtrl.l2_pf_enable, 2, Some(true.B))
         sms.io.enable := RegNextN(io.csrCtrl.l1D_pf_enable, 2, Some(false.B))
+        //l1 dcache prefetch refill
+        coreParams.l1dprefetchRefill.map(_=>{
+            val pf_to_l1d = Pipe(sms.io.l1_pf_req.get,1)
+            loadUnits.foreach(load_unit => {
+              load_unit.io.prefetch_req.valid := pf_to_l1d.valid
+              load_unit.io.prefetch_req.bits := pf_to_l1d.bits
+            })
+        })
         case None => sms.io.enable := false.B
       }
     case None =>
@@ -509,7 +517,7 @@ class MemBlockImp(outer: MemBlock) extends BasicExuBlockImp(outer)
     p"has trigger fire vec ${lduWritebacks(i).bits.uop.cf.trigger.backendCanFire}\n")
   }
   // l1 pf fuzzer interface
-  val DebugEnableL1PFFuzzer = true
+  val DebugEnableL1PFFuzzer = false
   if (DebugEnableL1PFFuzzer) {
     // l1 pf req fuzzer
     val fuzzer = Module(new L1PrefetchFuzzer())

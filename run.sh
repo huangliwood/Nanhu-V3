@@ -25,9 +25,10 @@ COMPILE_FILE="coremark"
 USE_VERILATER=0
 #SIM PARAMETERS
 EMU_ARGS=""
-TEST_FILE="microbench"
-TRACE_BEGIN=00000
-TRACE_END=20000
+EMU_IMAGE="microbench"
+NO_WAVE=0
+EMU_TRACE_BEGIN=00000
+EMU_TRACE_END=20000
 NUM_CORES=1
 CLEAN=1
 USE_VCS=0
@@ -176,7 +177,10 @@ run_cmd ()
     # Run command
     if [[ $LOGGED -eq 1 ]]; then
         [ ! -d $LOG_PATH ] && mkdir -p $LOG_PATH
+        ST_ERR="$LOG_PATH/std_err"
+        [ ! -f $LOG_PATH ] && touch $ST_ERR
         CMD="$1 2>&1 | tee $LOG"
+        cat $ST_ERR $LOG > temp && mv temp $LOG
         echo -e "${PURPLE}[runing] $CMD${NC}"
         $1 2>&1 | tee $LOG
         res=$?
@@ -275,35 +279,38 @@ fun_build(){
 fun_test(){
     cd $PRO_PATH
     [ ! -d "logs" ] && mkdir logs
-    echo $TEST_FILE
-    TEST_FILE_1=$(find $NOOP_HOME/ready-to-run -maxdepth 1 -name "$TEST_FILE*.bin" -print | awk -F " " '{print $1}')
-
+    echo $EMU_IMAGE
+    EMU_IMAGE_1=$(find $NOOP_HOME/ready-to-run -maxdepth 1 -name "$EMU_IMAGE*.bin" -print | awk -F " " '{print $1}')
     ARG=""
-    echo $EMU_ARGS
-    if [[ $EMU_ARGS != "" ]];then
-        ARG=$EMU_ARGS
-    else
-        ARG="-I 20000000 -W 000000"
-    fi
-    [ "$TEST_FILE_1" != "" ] && TEST_FILE=$TEST_FILE_1 && ARG="$ARG --dump-wave -b $TRACE_BEGIN -e $TRACE_END"
-    NAME=${TEST_FILE##*/}
-    [ "$TEST_FILE_1" == "" ] && TEST_FILE=$(head -n 1 $(find /bigdata/zfw/spec_cpt/take_cpt/$TEST_FILE* -type f  -print))
-    [ "$TEST_FILE_1" == "" ] && NAME="$1_$NAME"
-    echo $TEST_FILE | awk -F " " '{print $1}'
 
     [ $USE_VCS -eq 1 ] && {
         LOGGED=1
         LOG="$LOG_PATH/$NAME.$(date '+%Y-%m-%d@%H:%M:%S').vcs.log"
         RUN=$(find $VCS_OUTPUT -name "$SIMULATOR*" -type f -executable)
-        cmd="$RUN +workload=$TEST_FILE +dumpfsdb +dump-wave=fsdb"
+        [[ "$EMU_IMAGE_1" != "" ]] && EMU_IMAGE=$EMU_IMAGE_1 && ARG="$ARG +workload=$EMU_IMAGE "
+        [[ $NO_WAVE -eq 1 ]] && ARG="$ARG +dumpfsdb +dump-wave=fsdb "
+        cmd="$RUN $ARG"
         run_cmd "$cmd" "run vcs simulate test" "$PRO_PATH"
     }
     [ $USE_VERILATER -eq 1 ] && {
+        echo $EMU_ARGS
+        if [[ $EMU_ARGS != "" ]];then
+            ARG=$EMU_ARGS
+        else
+            ARG="-I 20000000 -W 000000"
+        fi
+        [[ "$EMU_IMAGE_1" != "" ]] && EMU_IMAGE=$EMU_IMAGE_1
+        [[ $NO_WAVE -ne 1 ]] && ARG="$ARG --dump-wave -b $EMU_TRACE_BEGIN -e $EMU_TRACE_END --wave-path=$PRO_PATH/$OUTPUT_FILE/$TIMESTAMP.vcd"
+        ARG="$ARG --force-dump-result "
+        NAME=${EMU_IMAGE##*/}
+        [ "$EMU_IMAGE_1" == "" ] && EMU_IMAGE=$(head -n 1 $(find /bigdata/zfw/spec_cpt/take_cpt/$EMU_IMAGE* -type f  -print))
+        [ "$EMU_IMAGE_1" == "" ] && NAME="$1_$NAME"
+        echo $EMU_IMAGE | awk -F " " '{print $1}'
+
         LOGGED=1
         LOG="$LOG_PATH/$NAME.$(date '+%Y-%m-%d@%H:%M:%S').emu.log"
         RUN=$(realpath $(find $OUTPUT_FILE -name "$SIMULATOR*" -type f -executable))
-        ARG="$ARG --wave-path=$PRO_PATH/$OUTPUT_FILE/$TIMESTAMP.vcd"
-        cmd="$RUN -i $TEST_FILE $ARG"
+        cmd="$RUN -i $EMU_IMAGE $ARG"
         run_cmd "$cmd" "run emu simulate test" "$PRO_PATH"
     }
 
@@ -468,22 +475,23 @@ fun_main(){
             -o)OUTPUT_FILE=$ARG;;
             -t){
                 IFS='#' read -ra INNER_ARGS_ARRAY <<< "$ARG"
-                set -- $(getopt -o b::e:: -l wave,bin -- "${INNER_ARGS_ARRAY[@]}")
+                set -- $(getopt -o s:C:I:W:i:b::e:: -l no-wave,dump-wave,no-diff -- "${INNER_ARGS_ARRAY[@]}")
                 while [ -n "$1" ];do
                     tmp=${2#*\'}
                     ARG=${tmp%\'*}
                     case "$1" in
-                        --wave)echo -ne "${PURPLE}enable dump wave${NC}";;
-                        --bin)TEST_FILE=$ARG && echo -ne "${PURPLE}enable dump wave${NC}";;
-                        -b)echo -ne "${PURPLE} wave range [$ARG ${NC},";;
-                        -e)echo -ne "${PURPLE}$ARG] ${NC}";;
+                        --no-diff) EMU_ARGS="$EMU_ARGS --no-diff ";echo -ne "${PURPLE}enable dump wave${NC}";;
+                        -i)EMU_IMAGE=$ARG && echo -ne "${PURPLE}enable dump wave${NC}";;
+                        --no-wave)NO_WAVE=1;echo -ne "${PURPLE}disable dump wave${NC}";;
+                        -b)EMU_TRACE_BEGIN=$ARG; echo -ne "${PURPLE} wave range [$ARG ${NC},";;
+                        -e)EMU_TRACE_END=$ARG; echo -ne "${PURPLE}$ARG] ${NC}";;
                         ?)break;;
                     esac
                     shift 1
                 done
                 echo 
                 op_runSim=1
-                [[ -n $ARG ]]&&TEST_FILE=$ARG;op_runSim=1
+                [[ -n $ARG ]]&&EMU_IMAGE=$ARG;op_runSim=1
             };;
 
             --)shift 1;break;;

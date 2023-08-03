@@ -25,7 +25,8 @@ import coupledL2.PrefetchRecv
 import coupledL2.prefetch.{PrefetchReceiverParams, HyperPrefetchParams}
 import utils._
 import xiangshan._
-import xiangshan.backend.execute.exu.{ExuConfig, ExuOutputNode, ExuType}
+import xiangshan.backend.execute.exu.{ExuConfig, ExuInputNode, ExuOutputNode, ExuType}
+import xiangshan.backend.execute.exucx.ExuComplexIssueNode
 import xiangshan.backend.execute.fu.{FuConfigs, FunctionUnit, PMP, PMPChecker, PMPCheckerv2}
 import xiangshan.backend.execute.fu.csr.{PFEvent, SdtrigExt}
 import xiangshan.backend.execute.fu.fence.{FenceToSbuffer, SfenceBundle}
@@ -48,6 +49,26 @@ class Std(implicit p: Parameters) extends XSModule {
   io.out.bits.uop := io.in.bits.uop
   io.out.bits.data := io.in.bits.src(0)
 }
+class MemIssueRouter(implicit p: Parameters) extends LazyModule{
+  val node = new ExuComplexIssueNode
+  lazy val module = new LazyModuleImp(this){
+    require(node.in.length == 1)
+    private val ib = node.in.head._1
+    for((ob,oe) <- node.out) {
+      ob.issue.valid := ib.issue.valid && ib.issue.bits.uop.ctrl.fuType === oe._2.fuConfigs.head.fuType
+      ob.issue.bits := ib.issue.bits
+      ib.issue.ready := true.B
+      assert(ob.issue.ready === true.B)
+      ob.rsIdx := ib.rsIdx
+      if (oe._2.fuConfigs.head.name == "ldu") {
+        ib.rsFeedback.feedbackFastLoad := ob.rsFeedback.feedbackFastLoad
+        ib.rsFeedback.feedbackSlowLoad := ob.rsFeedback.feedbackSlowLoad
+      } else if (oe._2.fuConfigs.head.name == "sta") {
+        ib.rsFeedback.feedbackSlowStore := ob.rsFeedback.feedbackSlowStore
+      }
+    }
+  }
+}
 
 class MemBlock(val parentName:String = "Unknown")(implicit p: Parameters) extends BasicExuBlock
   with HasXSParameter{
@@ -56,7 +77,7 @@ class MemBlock(val parentName:String = "Unknown")(implicit p: Parameters) extend
     ExuConfig(
       name = "LduExu",
       id = idx,
-      complexName = "LduComplex",
+      complexName = "MemComplex",
       fuConfigs = Seq(FuConfigs.lduCfg),
       exuType = ExuType.ldu
     )
@@ -65,7 +86,7 @@ class MemBlock(val parentName:String = "Unknown")(implicit p: Parameters) extend
     ExuConfig(
       name = "StaExu",
       id = idx,
-      complexName = "StaComplex",
+      complexName = "MemComplex",
       fuConfigs = Seq(FuConfigs.staCfg),
       exuType = ExuType.sta
     )
@@ -74,21 +95,28 @@ class MemBlock(val parentName:String = "Unknown")(implicit p: Parameters) extend
     ExuConfig(
       name = "StdExu",
       id = idx,
-      complexName = "StdComplex",
+      complexName = "MemComplex",
       fuConfigs = Seq(FuConfigs.stdCfg),
       exuType = ExuType.std
     )
   })
-  val lduIssueNodes: Seq[MemoryBlockIssueNode] = lduParams.zipWithIndex.map(new MemoryBlockIssueNode(_))
+  val lduIssueNodes: Seq[ExuInputNode] = lduParams.zipWithIndex.map(e => new ExuInputNode(e._1))
   val lduWritebackNodes: Seq[ExuOutputNode] = lduParams.map(new ExuOutputNode(_))
-  val staIssueNodes: Seq[MemoryBlockIssueNode] = staParams.zipWithIndex.map(new MemoryBlockIssueNode(_))
+  val staIssueNodes: Seq[ExuInputNode] = staParams.zipWithIndex.map(e => new ExuInputNode(e._1))
   val staWritebackNodes: Seq[ExuOutputNode] = staParams.map(new ExuOutputNode(_))
-  val stdIssueNodes: Seq[MemoryBlockIssueNode] = stdParams.zipWithIndex.map(new MemoryBlockIssueNode(_))
+  val stdIssueNodes: Seq[ExuInputNode] = stdParams.zipWithIndex.map(e => new ExuInputNode(e._1))
   val stdWritebackNodes: Seq[ExuOutputNode] = stdParams.map(new ExuOutputNode(_))
-  private val allIssueNodes = lduIssueNodes ++ staIssueNodes ++ stdIssueNodes
+
+  val memIssueRouters: Seq[MemIssueRouter] = Seq.fill(2)(LazyModule(new MemIssueRouter))
+  memIssueRouters.zip(lduIssueNodes).zip(staIssueNodes).zip(stdIssueNodes).foreach({case(((mir, ldu), sta), std) =>
+    ldu :*= mir.node
+    sta :*= mir.node
+    std :*= mir.node
+  })
+
   private val allWritebackNodes = lduWritebackNodes ++ staWritebackNodes ++ stdWritebackNodes
 
-  allIssueNodes.foreach(inode => inode :*= issueNode)
+  memIssueRouters.foreach(mir => mir.node :*= issueNode)
   allWritebackNodes.foreach(onode => writebackNode :=* onode)
 
   val dcache = LazyModule(new DCacheWrapper(parentName = parentName + "dcache_"))
@@ -133,7 +161,6 @@ class MemBlockImp(outer: MemBlock) extends BasicExuBlockImp(outer)
     require(wb.out.length == 1)
     wb.out.head._1
   })
-  private val rsParam = outer.lduIssueNodes.head.in.head._2._1
 
   val io = IO(new Bundle {
     val hartId = Input(UInt(8.W))
@@ -386,8 +413,8 @@ class MemBlockImp(outer: MemBlock) extends BasicExuBlockImp(outer)
   for (i <- 0 until exuParameters.LduCnt) {
     loadUnits(i).io.bankConflictAvoidIn := (i % 2).U
     loadUnits(i).io.redirect := Pipe(redirectIn)
-    lduIssues(i).rsFeedback.feedbackSlow := loadUnits(i).io.feedbackSlow
-    lduIssues(i).rsFeedback.feedbackFast := loadUnits(i).io.feedbackFast
+    lduIssues(i).rsFeedback.feedbackSlowLoad := loadUnits(i).io.feedbackSlow
+    lduIssues(i).rsFeedback.feedbackFastLoad := loadUnits(i).io.feedbackFast
     loadUnits(i).io.rsIdx := lduIssues(i).rsIdx
     loadUnits(i).io.isFirstIssue := lduIssues(i).rsFeedback.isFirstIssue // NOTE: just for dtlb's perf cnt
     // get input form dispatch
@@ -495,7 +522,7 @@ class MemBlockImp(outer: MemBlock) extends BasicExuBlockImp(outer)
     stdUnits(i).io.in <> stdIssues(i).issue
 
     stu.io.redirect     <> Pipe(redirectIn)
-    stu.io.feedbackSlow <> staIssues(i).rsFeedback.feedbackSlow
+    staIssues(i).rsFeedback.feedbackSlowStore := stu.io.feedbackSlow
     stu.io.rsIdx        :=  staIssues(i).rsIdx
     // NOTE: just for dtlb's perf cnt
     stu.io.isFirstIssue := staIssues(i).rsFeedback.isFirstIssue
@@ -505,10 +532,6 @@ class MemBlockImp(outer: MemBlock) extends BasicExuBlockImp(outer)
     // dtlb
     stu.io.tlb          <> dtlb_reqs.drop(ld_tlb_ports)(i)
     stu.io.pmp          <> pmp_check(i+ld_tlb_ports).resp
-
-    // store unit does not need fast feedback
-    staIssues(i).rsFeedback.feedbackFast.valid := false.B
-    staIssues(i).rsFeedback.feedbackFast.bits := DontCare
 
     // Lsq to sta unit
     lsq.io.storeMaskIn(i) <> stu.io.storeMaskOut

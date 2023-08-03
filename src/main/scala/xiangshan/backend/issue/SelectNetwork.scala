@@ -33,6 +33,7 @@ class SelectInfo(implicit p: Parameters) extends XSBundle{
   val rfWen = Bool()
   val fpWen = Bool()
   val robPtr = new RobPtr
+  val highPriority = Bool()
 }
 
 class SelectResp(val bankIdxWidth:Int, entryIdxWidth:Int)(implicit p: Parameters) extends XSBundle {
@@ -159,6 +160,8 @@ class SelectNetwork(bankNum:Int, entryNum:Int, issueNum:Int, val cfg:ExuConfig, 
       ta.io.alloc.valid := outPort.fire
       ta.io.alloc.bits.pdest := driver.io.out.bits.info.pdest
       ta.io.alloc.bits.robPtr := driver.io.out.bits.info.robPtr
+      ta.io.alloc.bits.lpv := outPort.bits.info.lpv
+      ta.io.earlyWakeUpCancel := io.earlyWakeUpCancel
       ta.io.release := tr
       val shouldBeFlushed = driver.io.out.bits.info.robPtr.needFlush(io.redirect)
       val shouldBeCancelled = driver.io.out.bits.info.lpv.zip(io.earlyWakeUpCancel).map({case(l, c)=>l(0) & c}).reduce(_|_)

@@ -51,9 +51,40 @@ object SelectRespArbiter{
     val res = Mux(sel, in0, in1)
     res
   }
+
+  def select2WithPriority(in0: SelectArbiterInternalBundle, in1: SelectArbiterInternalBundle): SelectArbiterInternalBundle = {
+    val valid0 = in0.valid
+    val valid1 = in1.valid
+    val ptr0 = in0.info.info.robPtr
+    val ptr1 = in1.info.info.robPtr
+    val hp0 = in0.info.info.highPriority
+    val hp1 = in1.info.info.highPriority
+    val validVec = Cat(valid1, valid0)
+    val hpVec = Cat(hp1, hp0)
+    val sel = WireInit(true.B)
+    switch(validVec) {
+      is("b01".U) {
+        sel := true.B
+      }
+      is("b10".U) {
+        sel := false.B
+      }
+      is("b11".U) {
+        when(hpVec === "b01".U){
+          sel := true.B
+        }.elsewhen(hpVec === "b10".U){
+          sel := false.B
+        }.otherwise{
+          sel := ptr0 < ptr1
+        }
+      }
+    }
+    val res = Mux(sel, in0, in1)
+    res
+  }
 }
 
-class SelectRespArbiter(bankNum:Int, entryNum:Int, inNum:Int)(implicit p: Parameters) extends Module{
+class SelectRespArbiter(bankNum:Int, entryNum:Int, inNum:Int, hasPriority:Boolean = false)(implicit p: Parameters) extends Module{
   val io = IO(new Bundle{
     val in = Vec(inNum, Flipped(Decoupled(new SelectResp(bankNum, entryNum))))
     val out = Decoupled(new SelectResp(bankNum, entryNum))
@@ -66,7 +97,11 @@ class SelectRespArbiter(bankNum:Int, entryNum:Int, inNum:Int)(implicit p: Parame
     res.idxOH := (1 << idx).U
     res
   })
-  private val res = ParallelOperation(infoSeq, SelectRespArbiter.select2)
+  private val res = if(hasPriority){
+    ParallelOperation(infoSeq, SelectRespArbiter.select2WithPriority)
+  }else{
+    ParallelOperation(infoSeq, SelectRespArbiter.select2)
+  }
   io.out.valid := res.valid
   io.out.bits := res.info
   io.chosen := res.idxOH

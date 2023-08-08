@@ -14,7 +14,7 @@ SIMULATOR="emu"
 #LOG
 VERBOSE=1
 LOGGED=0
-LOG_PATH="$PRO_PATH/logs/$(date '+%m-%d')/$OUTPUT_FILE"
+LOG_PATH=""
 #EMU_Parameters
 CORE_NUMS=$(grep -r "processor" /proc/cpuinfo | wc -l)
 EMU_THREADS=$(( CORE_NUMS * THREADS_USE))
@@ -25,7 +25,7 @@ COMPILE_FILE="coremark"
 USE_VERILATER=0
 #SIM PARAMETERS
 EMU_ARGS=""
-EMU_IMAGE="microbench"
+TEST_BIN="microbench"
 NO_WAVE=0
 EMU_TRACE_BEGIN=00000
 EMU_TRACE_END=20000
@@ -173,14 +173,12 @@ print_help ()
 run_cmd ()
 {
     [[ -n "$3" ]] && cd $3
+    res=0
     res1=0
     # Run command
     if [[ $LOGGED -eq 1 ]]; then
         [ ! -d $LOG_PATH ] && mkdir -p $LOG_PATH
-        ST_ERR="$LOG_PATH/std_err"
-        [ ! -f $LOG_PATH ] && touch $ST_ERR
         CMD="$1 2>&1 | tee $LOG"
-        cat $ST_ERR $LOG > temp && mv temp $LOG
         echo -e "${PURPLE}[runing] $CMD${NC}"
         $1 2>&1 | tee $LOG
         res=$?
@@ -194,14 +192,14 @@ run_cmd ()
         res=$?
     fi
 
-    #    echo "res : $res $res1 $4"
+    echo "res : $res $res1 $4"
     CMD_RES=0
     CMD_FINISH_MSG=0
     LOGGED=0
     if [[ ! $4 ]] && ( [[ $res -eq 0 ]] || [[ $res1 -eq 0 ]] ); then
         echo -e "${PURPLE}[DONE] $CMD ${NC}"
         [[ $LOGGED -eq 1 ]] && echo -e "[LOGS] $LOG${NC}"
-    elif [[ $4 -eq 1 ]] && ( [[ $res -eq 0 ]] && [[ $res1 -eq 0 ]] ); then
+    elif [[ $4 -eq 1  && $res -eq 0 && $res1 -eq 0 ]]; then
        echo -e "${PURPLE}[DONE] $CMD ${NC}"
        [[ $LOGGED -eq 1 ]] && echo -e "[LOGS] $LOG${NC}"
     else    # Command error
@@ -211,6 +209,7 @@ run_cmd ()
         exit 1
     fi
 }
+
 fun_checkInput(){
     if [ -z "$2" ];then
         eval echo "none input,use default:$1 "
@@ -218,16 +217,18 @@ fun_checkInput(){
         eval $1=$2
     fi
 }
+
 fun_checkCore(){
     echo $(($CORE_NUMS*$THREADS_USE))
 }
+
 fun_checkEnv(){
     local ENV_NAME=$(echo $ENV_PATH | rev | cut -d/ -f1 | rev)
     local PRO_NAME=$(echo $PRO_PATH | rev | cut -d/ -f1 | rev)
 
     if [[ $PRO_NAME == "Nanhu-V3" || $PRO_NAME == "XiangShan" ]]; then
         export NOOP_HOME=$(pwd)
-    else 
+    else
         export NOOP_HOME=$(pwd)/generators/Nanhu-v3
     fi
     [[ "$0" != "$BASH_SOURCE" ]] && {
@@ -238,7 +239,7 @@ fun_checkEnv(){
         echo SET NEMU_HOME \(NEMU_HOME\): ${NEMU_HOME}
         echo SET AM_HOME \(AM_HOME\): ${AM_HOME}
         echo SET DRAMSIM3_HOME \(DRAMSIM3_HOME \): ${DRAMSIM3_HOME}
-    }   
+    }
 }
 fun_checkDiskCapacity(){
   echo ""
@@ -269,9 +270,9 @@ fun_build(){
     [ $USE_VERILATER -eq 1 ] && {
       LOGGED=1
       CMD_FINISH_MSG="SimTop.v"
-      run_cmd "make emu CONFIG=${1} WITH_DRAMSIM3=$WITH_DRAMSIM3 EMU_TRACE=1 EMU_THREADS=$EMU_THREADS -j$(fun_checkCore)" "compile simulater" $PRO_PATH
+      run_cmd "make emu CONFIG=${1} WITH_DRAMSIM3=$WITH_DRAMSIM3 EMU_TRACE=1 EMU_THREADS=$EMU_THREADS -j$(fun_checkCore)" "compile simulater" $PRO_PATH 1
     }
-#    $USE_VCS && mv $PRO_PATH/difftest/simv $OUTPUT_FILE
+#    $USE_VCS && mv $DIFFTEST_DIR/simv $OUTPUT_FILE
     need_rename=0 && [[ $op_openVerdi -eq 1  &&  $op_runSim -eq 1 ]] && need_rename=1
 #     $need_rename && [ ! -d build_latest_tmp ] && rm ./build_latest_tmp/
 #     $need_rename && mv  ./build ./build_latest_tmp && OUTPUT_FILE=build_latest_tmp && echo "${BLUE}rename build -> build_latest_tmp${NC}"
@@ -279,15 +280,15 @@ fun_build(){
 fun_test(){
     cd $PRO_PATH
     [ ! -d "logs" ] && mkdir logs
-    echo $EMU_IMAGE
-    EMU_IMAGE_1=$(find $NOOP_HOME/ready-to-run -maxdepth 1 -name "$EMU_IMAGE*.bin" -print | awk -F " " '{print $1}')
+    echo $TEST_BIN
+    TEST_BIN_1=$(find $NOOP_HOME/ready-to-run -maxdepth 1 -name "$TEST_BIN*" -print | awk -F " " '{print $1}' | head -n 1)
     ARG=""
 
     [ $USE_VCS -eq 1 ] && {
         LOGGED=1
         LOG="$LOG_PATH/$NAME.$(date '+%Y-%m-%d@%H:%M:%S').vcs.log"
         RUN=$(find $VCS_OUTPUT -name "$SIMULATOR*" -type f -executable)
-        [[ "$EMU_IMAGE_1" != "" ]] && EMU_IMAGE=$EMU_IMAGE_1 && ARG="$ARG +workload=$EMU_IMAGE "
+        [[ "$TEST_BIN_1" != "" ]] && TEST_BIN=$TEST_BIN_1 && ARG="$ARG +workload=$TEST_BIN "
         [[ $NO_WAVE -eq 1 ]] && ARG="$ARG +dumpfsdb +dump-wave=fsdb "
         cmd="$RUN $ARG"
         run_cmd "$cmd" "run vcs simulate test" "$PRO_PATH"
@@ -297,21 +298,21 @@ fun_test(){
         if [[ $EMU_ARGS != "" ]];then
             ARG=$EMU_ARGS
         else
-            ARG="-I 20000000 -W 000000"
+            ARG="-I 20000000 -W 500000"
         fi
-        [[ "$EMU_IMAGE_1" != "" ]] && EMU_IMAGE=$EMU_IMAGE_1
+        [[ "$TEST_BIN_1" != "" ]] && TEST_BIN=$TEST_BIN_1
         [[ $NO_WAVE -ne 1 ]] && ARG="$ARG --dump-wave -b $EMU_TRACE_BEGIN -e $EMU_TRACE_END --wave-path=$PRO_PATH/$OUTPUT_FILE/$TIMESTAMP.vcd"
         ARG="$ARG --force-dump-result "
-        NAME=${EMU_IMAGE##*/}
-        [ "$EMU_IMAGE_1" == "" ] && EMU_IMAGE=$(head -n 1 $(find /bigdata/zfw/spec_cpt/take_cpt/$EMU_IMAGE* -type f  -print))
-        [ "$EMU_IMAGE_1" == "" ] && NAME="$1_$NAME"
-        echo $EMU_IMAGE | awk -F " " '{print $1}'
+        NAME=${TEST_BIN##*/}
+        [ "$TEST_BIN_1" == "" ] && TEST_BIN=$(head -n 1 $(find /bigdata/zfw/spec_cpt/take_cpt/$TEST_BIN* -type f  -print))
+        [ "$TEST_BIN_1" == "" ] && NAME="$1_$NAME"
+        echo $TEST_BIN | awk -F " " '{print $1}'
 
         LOGGED=1
-        LOG="$LOG_PATH/$NAME.$(date '+%Y-%m-%d@%H:%M:%S').emu.log"
-        RUN=$(realpath $(find $OUTPUT_FILE -name "$SIMULATOR*" -type f -executable))
-        cmd="$RUN -i $EMU_IMAGE $ARG"
-        run_cmd "$cmd" "run emu simulate test" "$PRO_PATH"
+        LOG_PATH="$PRO_PATH/logs/$(date '+%m-%d')/$OUTPUT_FILE" && LOG="$LOG_PATH/$NAME.$(date '+%Y-%m-%d@%H:%M:%S').t${EMU_THREADS}.emu.log"
+        RUN=$(realpath $(find $OUTPUT_FILE -name "$SIMULATOR*" -type f -executable | head -n 1))
+        cmd="$RUN -i $TEST_BIN $ARG"
+        run_cmd "$cmd" "run emu simulate test" "$PRO_PATH" 1
     }
 
     [[ $CMD_RES -eq 0 ]] && grep -q '\[PERF \]' $LOG && {
@@ -358,25 +359,31 @@ fun_openVerdi(){
             exit 1
         fi
         fun_findlatestVCDFile "$VERDI_OUTPUT"
-        [[ -z "$LATEST_FSDB_FILE" ]] && run_cmd "vcd2fsdb $LATEST_VCD_FILE" "vcd2fsdb" "$VERDI_OUTPUT" && LATEST_FSDB_FILE="${VERDI_OUTPUT}/$LATEST_VCD_FILE.fsdb"
+        [[ -z "$LATEST_FSDB_FILE" ]] && {
+            run_cmd "vcd2fsdb $LATEST_VCD_FILE" "vcd2fsdb" "$VERDI_OUTPUT"
+            sleep 1 
+            LATEST_FSDB_FILE=$(find $VERDI_OUTPUT -type f -name "$LATEST_VCD_FILE.fsdb")
+        }
+        [[ -z "$LATEST_FSDB_FILE" ]] && echo "${RED}error" && exit 1
+
         [ "$(sed -n "/[\w,\/]*\/$OUTPUT_FILE\/*/p" $VERDI_FLIST | xargs)" == "" ] && {
-            echo "modify ${FILE_LIST} path" 
+            echo "modify ${FILE_LIST} path"
             sed -i "s/\/build/\/$OUTPUT_FILE/g" "$VERDI_FLIST"
         }
         cd $PRO_PATH/$OUTPUT_FILE
-
-        [[ ! -f $PRO_PATH/difftest/src/test/vsrc/vcs/TOP.v ]] && {
+        DIFFTEST_DIR="$NOOP_HOME/difftest"
+        [[ ! -f $DIFFTEST_DIR/src/test/vsrc/vcs/TOP.v ]] && {
             echo -e "\
             module TOP();\n\
                 SimTop SimTop();\n\
-            endmodule" > $PRO_PATH/difftest/src/test/vsrc/vcs/TOP.v
+            endmodule" > $DIFFTEST_DIR/src/test/vsrc/vcs/TOP.v
         }
         [[ $(find ./ -name $FILE_LIST | xargs sed -n '/SimTop/p') == "" ]] && {
             SIMTOP_FILE=$(find ./ -type f \( -name "SimTop*.v" -o -name "SimTop*.sv" \) -print -quit)
             [[ ! -z "$SIMTOP_FILE" ]] && realpath "SIMTOP_FILE" >> $FILE_LIST
         }
-        [[ $(find ./ -name $FILE_LIST | xargs sed -n '/TOP/p') == "" ]] && realpath ../difftest/src/test/vsrc/vcs/TOP.v >> $FILE_LIST
-        [[ $(find ./ -name $FILE_LIST | xargs sed -n '/top/p') == "" ]] && realpath ../difftest/src/test/vsrc/vcs/top.v >> $FILE_LIST
+        [[ $(find ./ -name $FILE_LIST | xargs sed -n '/TOP/p') == "" ]] && realpath $DIFFTEST_DIR/src/test/vsrc/vcs/TOP.v >> $FILE_LIST
+        [[ $(find ./ -name $FILE_LIST | xargs sed -n '/top/p') == "" ]] && realpath $DIFFTEST_DIR/src/test/vsrc/vcs/top.v >> $FILE_LIST
 
         cmd="verdi -rcFile ${HOME}/.novas.rc -f $VERDI_FLIST -ssf $LATEST_FSDB_FILE -sswr $RC_FILE"
         run_cmd "$cmd" "open verdi" "$VERDI_OUTPUT"
@@ -385,28 +392,28 @@ fun_openVerdi(){
     [ $USE_VCS -eq 1 ] && {
         cd $PRO_PATH/$OUTPUT_FILE
 
-        [ "$(sed -n "/[\w,\/]*\/$OUTPUT_FILE\/*/p" $VERDI_FLIST | xargs)" == "" ] && {
-            echo "modify ${FILE_LIST} path" 
-            sed -i "s/\/build/\/$OUTPUT_FILE/g" "$VERDI_FLIST"
-        }
+#        [ "$(sed -n "/[\w,\/]*\/$OUTPUT_FILE\/*/p" $VERDI_FLIST | xargs)" == "" ] && {
+#            echo "modify ${FILE_LIST} path"
+#            sed -i "s/\/build/\/$OUTPUT_FILE/g" "$VERDI_FLIST"
+#        }
 
         [ $USE_VCS -eq 1 ] && HAS_FSDB=$(find $PRO_PATH -type f -name "*.fsdb" -a ! -name "stdin.fsdb")
         [ -n "$HAS_FSDB" ] && LATEST_FSDB_FILE=$(ls -lt $PRO_PATH/*.fsdb | head -n1 | awk '{print $9}') && fun_getTimeStamp "$LATEST_FSDB_FILE" && fsdb_timeStamp=$TIMESTAMP
         [ $USE_VCS -eq 1 ] && cmd="verdi  -rcFile ${HOME}/.novas.rc -simflow -simBin ./simv -ssf $LATEST_FSDB_FILE -sswr $RC_FILE"
         [ $USE_VCS -eq 1 ] && VERDI_OUTPUT=$PRO_PATH/sim/rtl/comp
         if [[ -z $op_tlTest ]];then
-        [[ ! -f $PRO_PATH/difftest/src/test/vsrc/vcs/TOP.v ]] && {
+        [[ ! -f $DIFFTEST_DIR/src/test/vsrc/vcs/TOP.v ]] && {
             echo -e "\
             module TOP();\n\
                 SimTop SimTop();\n\
-            endmodule" > $PRO_PATH/difftest/src/test/vsrc/vcs/TOP.v
+            endmodule" > $DIFFTEST_DIR/src/test/vsrc/vcs/TOP.v
         }
         [[ $(find ./ -name $FILE_LIST | xargs sed -n '/SimTop/p') == "" ]] && {
             SIMTOP_FILE=$(find ./ -type f \( -name "SimTop*.v" -o -name "SimTop*.sv" \) -print -quit)
             [[ ! -z "$SIMTOP_FILE" ]] && realpath "SIMTOP_FILE" >> $FILE_LIST
-        } 
-        [[ $(find ./ -name $FILE_LIST | xargs sed -n '/TOP/p') == "" ]] && realpath ../difftest/src/test/vsrc/vcs/TOP.v >> $FILE_LIST
-        [[ $(find ./ -name $FILE_LIST | xargs sed -n '/top/p') == "" ]] && realpath ../difftest/src/test/vsrc/vcs/top.v >> $FILE_LIST
+        }
+        [[ $(find ./ -name $FILE_LIST | xargs sed -n '/TOP/p') == "" ]] && realpath $DIFFTEST_DIR/src/test/vsrc/vcs/TOP.v >> $FILE_LIST
+        [[ $(find ./ -name $FILE_LIST | xargs sed -n '/top/p') == "" ]] && realpath $DIFFTEST_DIR/src/test/vsrc/vcs/top.v >> $FILE_LIST
         fi
 
         run_cmd "$cmd" "open verdi" "$VERDI_OUTPUT"
@@ -441,7 +448,7 @@ fun_main(){
             INNER_ARGS=${arg//\|/}
             # echo "start $INNER_ARGS"
             TRACED=1
-        elif [[ "${arg: -1}" = "|" ]] && [[ $TRACED -eq 1 ]]; then 
+        elif [[ "${arg: -1}" = "|" ]] && [[ $TRACED -eq 1 ]]; then
             INNER_ARGS=$INNER_ARGS#${arg//\|/}
             # echo "end $INNER_ARGS"
             args+=("${INNER_ARGS[@]}")
@@ -453,13 +460,14 @@ fun_main(){
             echo "$arg"
         fi
     done
- 
+
     set -- "${args[@]}"
     echo "${args[@]}"
     while [ -n "$1" ];do
         tmp=${2#*\'}
         ARG=${tmp%\'*}
-
+        [[ $ARG == "--" ]] && ARG=""
+        
         case "$1" in
             -h|H|--help) print_help;;
             --simv) SIMULATOR="simv" && USE_VCS=1;;
@@ -481,7 +489,7 @@ fun_main(){
                     ARG=${tmp%\'*}
                     case "$1" in
                         --no-diff) EMU_ARGS="$EMU_ARGS --no-diff ";echo -ne "${PURPLE}enable dump wave${NC}";;
-                        -i)EMU_IMAGE=$ARG && echo -ne "${PURPLE}enable dump wave${NC}";;
+                        -i)TEST_BIN=$ARG && echo -ne "${PURPLE}enable dump wave${NC}";;
                         --no-wave)NO_WAVE=1;echo -ne "${PURPLE}disable dump wave${NC}";;
                         -b)EMU_TRACE_BEGIN=$ARG; echo -ne "${PURPLE} wave range [$ARG ${NC},";;
                         -e)EMU_TRACE_END=$ARG; echo -ne "${PURPLE}$ARG] ${NC}";;
@@ -489,9 +497,9 @@ fun_main(){
                     esac
                     shift 1
                 done
-                echo 
+                echo
                 op_runSim=1
-                [[ -n $ARG ]]&&EMU_IMAGE=$ARG;op_runSim=1
+                [[ -n $ARG ]]&&TEST_BIN=$ARG;op_runSim=1
             };;
 
             --)shift 1;break;;

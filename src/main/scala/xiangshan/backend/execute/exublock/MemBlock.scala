@@ -34,6 +34,7 @@ import xiangshan.cache._
 import xiangshan.cache.mmu.{BTlbPtwIO, TLB, TlbReplace}
 import xiangshan.mem._
 import xiangshan.mem.prefetch.{BasePrefecher, L1PrefetchReq, SMSParams, SMSPrefetcher,L1PrefetchFuzzer}
+import xiangshan.mem.prefetch.{StridePrefetcherParams,StridePrefetcher}
 import xs.utils.mbist.MBISTPipeline
 import xs.utils.{DelayN, ParallelPriorityMux, RegNextN, ValidIODelay}
 
@@ -235,6 +236,23 @@ class MemBlockImp(outer: MemBlock) extends BasicExuBlockImp(outer)
     //   Some(sms)
     case _ => None
   }
+  val l1dprefetcherOpt: Option[BasePrefecher] = coreParams.l1dprefetcher.get match{
+    case pf:StridePrefetcherParams =>
+      val stride = Module(new StridePrefetcher())
+      stride.io.enable := RegNextN(io.csrCtrl.l1D_pf_enable_stride, 2, Some(true.B))
+
+      //l1 dcache prefetch refill
+      coreParams.l1dprefetchRefill.foreach(_ => {
+        val pf_to_l1d = Pipe(stride.io.l1_pf_req.get, 1)
+        loadUnits.foreach(load_unit => {
+          load_unit.io.prefetch_req.valid := pf_to_l1d.valid
+          load_unit.io.prefetch_req.bits := pf_to_l1d.bits
+        })
+      })
+      Some(stride)
+    case _ => None
+  }
+
   prefetcherOpt match {
     case Some(sms) => // memblock can only have sms or not
       outer.pf_sender_opt match{
@@ -244,14 +262,9 @@ class MemBlockImp(outer: MemBlock) extends BasicExuBlockImp(outer)
         sender.out.head._1.addr := pf_to_l2.bits
         sender.out.head._1.l2_pf_en := RegNextN(io.csrCtrl.l2_pf_enable, 2, Some(true.B))
         sms.io.enable := RegNextN(io.csrCtrl.l1D_pf_enable, 2, Some(false.B))
-        //l1 dcache prefetch refill
-        coreParams.l1dprefetchRefill.map(_=>{
-            val pf_to_l1d = Pipe(sms.io.l1_pf_req.get,1)
-            loadUnits.foreach(load_unit => {
-              load_unit.io.prefetch_req.valid := pf_to_l1d.valid
-              load_unit.io.prefetch_req.bits := pf_to_l1d.bits
-            })
-        })
+        if(sms.io.l1_pf_req.nonEmpty){
+          sms.io.l1_pf_req.get := DontCare
+        }
         case None => sms.io.enable := false.B
       }
     case None =>
@@ -450,6 +463,16 @@ class MemBlockImp(outer: MemBlock) extends BasicExuBlockImp(outer)
         pcDelay1Bits,
         pcDelay2Bits)
     })
+    l1dprefetcherOpt.foreach(pf => {
+      pf.io.ld_in(i).valid := Mux(pf_train_on_hit,
+        loadUnits(i).io.prefetch_train.valid,
+        loadUnits(i).io.prefetch_train.valid && loadUnits(i).io.prefetch_train.bits.miss
+      )
+      pf.io.ld_in(i).bits := loadUnits(i).io.prefetch_train.bits
+      pf.io.ld_in(i).bits.uop.cf.pc := Mux(loadUnits(i).io.s2IsPointerChasing,
+        pcDelay1Bits,
+        pcDelay2Bits)
+    })
 
 //    loadUnits(i).io.prefetch_req.valid := false.B
 //    loadUnits(i).io.prefetch_req.bits := 0.U.asTypeOf(new L1PrefetchReq())
@@ -535,6 +558,9 @@ class MemBlockImp(outer: MemBlock) extends BasicExuBlockImp(outer)
   }
   // Prefetcher
   prefetcherOpt.foreach(pf => {
+    dtlb_reqs(ld_tlb_ports - 1) <> pf.io.tlb_req
+  })
+  l1dprefetcherOpt.foreach(pf => {
     dtlb_reqs(ld_tlb_ports - 1) <> pf.io.tlb_req
   })
 

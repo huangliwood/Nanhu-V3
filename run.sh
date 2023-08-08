@@ -466,7 +466,7 @@ fun_main(){
     while [ -n "$1" ];do
         tmp=${2#*\'}
         ARG=${tmp%\'*}
-        [[ $ARG == "--" ]] && ARG=""
+        [[ $ARG == "-"* ]] && ARG=""
         
         case "$1" in
             -h|H|--help) print_help;;

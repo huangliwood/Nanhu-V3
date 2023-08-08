@@ -242,13 +242,13 @@ class MemBlockImp(outer: MemBlock) extends BasicExuBlockImp(outer)
       stride.io.enable := RegNextN(io.csrCtrl.l1D_pf_enable_stride, 2, Some(true.B))
 
       //l1 dcache prefetch refill
-      coreParams.l1dprefetchRefill.foreach(_ => {
+      if(coreParams.l1dprefetchRefill.get.equals(true)){
         val pf_to_l1d = Pipe(stride.io.l1_pf_req.get, 1)
         loadUnits.foreach(load_unit => {
           load_unit.io.prefetch_req.valid := pf_to_l1d.valid
           load_unit.io.prefetch_req.bits := pf_to_l1d.bits
         })
-      })
+      }
       Some(stride)
     case _ => None
   }

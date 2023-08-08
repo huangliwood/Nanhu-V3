@@ -359,7 +359,8 @@ class LoadPipe(id: Int)(implicit p: Parameters) extends DCacheModule with HasPer
   XSPerfAccumulate("load_miss_or_conflict", io.lsu.resp.fire() && resp.bits.miss)
   XSPerfAccumulate("actual_ld_fast_wakeup", s1_fire && s1_tag_match_dup_dc && !io.disable_ld_fast_wakeup)
   XSPerfAccumulate("ideal_ld_fast_wakeup", io.banked_data_read.fire() && s1_tag_match_dup_dc)
-  XSPerfAccumulate("l1dcache_prefetch_r_miss",s1_fire && s1_req.cmd===MemoryOpConstants.M_PFR)
+  XSPerfAccumulate("l1d_hwprefetch_r_miss",s1_fire && s1_req.cmd===MemoryOpConstants.M_PFR && !s1_hit)
+  XSPerfAccumulate("l1d_prefetch_r_hit",s1_fire && s1_req.cmd===MemoryOpConstants.M_PFR && s1_hit)
 
   val perfEvents = Seq(
     ("load_req                 ", io.lsu.req.fire()                                               ),

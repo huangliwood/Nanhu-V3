@@ -113,9 +113,9 @@ class LoadUnit_S0(implicit p: Parameters) extends XSModule with HasDCacheParamet
     s0_isFirstIssue := io.isFirstIssue
     s0_rsIdx := io.rsIdx
     s0_sqIdx := io.in.bits.uop.sqIdx
-    isSoftPrefetch := LSUOpType.isPrefetch(s0_uop.ctrl.fuOpType)
-    isSoftPrefetchRead := s0_uop.ctrl.fuOpType === LSUOpType.prefetch_r
-    isSoftPrefetchWrite := s0_uop.ctrl.fuOpType === LSUOpType.prefetch_w
+    isSoftPrefetch := false.B
+    isSoftPrefetchRead := false.B
+    isSoftPrefetchWrite := false.B
   }.elsewhen(s0_hw_pf_select) {
     s0_vaddr := io.prefetchReq.bits.getVaddr()
     s0_mask := 0.U
@@ -123,8 +123,8 @@ class LoadUnit_S0(implicit p: Parameters) extends XSModule with HasDCacheParamet
     s0_isFirstIssue := false.B
     s0_rsIdx := io.rsIdx
     s0_sqIdx := io.in.bits.uop.sqIdx
-    isSoftPrefetch := false.B
-    isSoftPrefetchRead := false.B
+    isSoftPrefetch := true.B
+    isSoftPrefetchRead := true.B
     isSoftPrefetchWrite := false.B
   }.otherwise {
     s0_vaddr := io.in.bits.src(0) + SignExt(imm12, VAddrBits)
@@ -217,9 +217,9 @@ class LoadUnit_S0(implicit p: Parameters) extends XSModule with HasDCacheParamet
   XSPerfAccumulate("addr_spec_failed", io.out.fire && s0_vaddr(VAddrBits-1, 12) =/= io.in.bits.src(0)(VAddrBits-1, 12))
   XSPerfAccumulate("addr_spec_success_once", io.out.fire && s0_vaddr(VAddrBits-1, 12) === io.in.bits.src(0)(VAddrBits-1, 12) && io.isFirstIssue)
   XSPerfAccumulate("addr_spec_failed_once", io.out.fire && s0_vaddr(VAddrBits-1, 12) =/= io.in.bits.src(0)(VAddrBits-1, 12) && io.isFirstIssue)
-  XSPerfAccumulate("hardware_prefetch_fire", io.out.fire && s0_hw_pf_select)
-  XSPerfAccumulate("hardware_prefetch_blocked", io.prefetchReq.valid && !s0_hw_pf_select)
-  XSPerfAccumulate("hardware_prefetch_total", io.prefetchReq.valid)
+  XSPerfAccumulate("l1d_hwprefetch_fire", io.out.fire && io.out.bits.ishwPrefetch)
+  XSPerfAccumulate("l1d_hwprefetch_blocked", io.prefetchReq.valid && !s0_hw_pf_select)
+  XSPerfAccumulate("l1d_hwprefetch_total", io.prefetchReq.valid)
 }
 
 

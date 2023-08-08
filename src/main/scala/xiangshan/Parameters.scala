@@ -72,7 +72,7 @@ case class XSCoreParameters
   RasSize: Int = 32,
   CacheLineSize: Int = 512,
   FtbWays: Int = 4,
-  hasMbist:Boolean = false,
+  hasMbist:Boolean = true,
   hasShareBus:Boolean = false,
   bootAddress:Long = 0x10000000L,
   TageTableInfos: Seq[Tuple3[Int,Int,Int]] =
@@ -126,8 +126,8 @@ case class XSCoreParameters
       (preds, ras.io.out)
     }),
   IBufSize: Int = 48,
-  DecodeWidth: Int = 6,
-  RenameWidth: Int = 6,
+  DecodeWidth: Int = 4,
+  RenameWidth: Int = 4,
   CommitWidth: Int = 6,
   FtqSize: Int = 64,
   EnableLoadFastWakeUp: Boolean = true, // NOTE: not supported now, make it false
@@ -156,8 +156,7 @@ case class XSCoreParameters
   rsBankNum:Int = 4,
   exuParameters: ExuParameters = ExuParameters(),
   // TODO: replace Coupled L2
-  // prefetcher: Option[PrefetcherParams] = Some(SMSParams()),
-  prefetcher: Option[PrefetcherParams] = None,
+  prefetcher: Option[PrefetcherParams] = Some(SMSParams()),
   l1dprefetcher: Option[PrefetcherParams] = None,
   l1dprefetchRefill: Option[Boolean] = None,
   LoadPipelineWidth: Int = 2,
@@ -240,8 +239,7 @@ case class XSCoreParameters
     ways = 8,
     sets = 1024,// default 512KB L2
     // hasShareBus = true,
-    prefetch = Some(coupledL2.prefetch.PrefetchReceiverParams()),
-    elaboratedTopDown=false
+    prefetch = Some(coupledL2.prefetch.PrefetchReceiverParams())
   )),
   L2NBanks: Int = 1,
   usePTWRepeater: Boolean = false,
@@ -272,6 +270,7 @@ trait HasXSParameter {
   val PAddrBits = p(SoCParamsKey).PAddrBits // PAddrBits is Phyical Memory addr bits
 
   val coreParams = p(XSCoreParamsKey)
+  // val L2prefetch = p(L2ParamKey).prefetch
   val env = p(DebugOptionsKey)
 
   val XLEN = coreParams.XLEN

@@ -157,7 +157,7 @@ class RegFileTop(implicit p:Parameters) extends LazyModule with HasXSParameter{
         val issueExuInReg = Reg(new ExuInput)
         val rsIdxReg = Reg(new RsIdx)
 
-        val allowPipe = !issueValidReg || bo.issue.ready
+        val allowPipe = !issueValidReg || bo.issue.ready || (issueValidReg && issueExuInReg.uop.robIdx.needFlush(io.redirect))
         bo.issue.valid := issueValidReg && !issueExuInReg.uop.robIdx.needFlush(io.redirect)
         bo.issue.bits := issueExuInReg
         bo.rsIdx := rsIdxReg

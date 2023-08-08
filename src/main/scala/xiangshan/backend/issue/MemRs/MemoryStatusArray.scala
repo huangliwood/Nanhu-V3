@@ -59,14 +59,12 @@ sealed class BasicMemoryIssueInfoGenerator(implicit p: Parameters) extends XSMod
 class StaLoadIssueInfoGen(implicit p: Parameters) extends BasicMemoryIssueInfoGenerator{
   readyToIssue := ib.srcState(0) === SrcState.rdy && ib.staLoadState === EntryState.s_ready
   io.out.bits.lpv := ib.lpv(0)
-  io.out.bits.highPriority := ib.fuType === FuType.ldu && !ib.isReplayed
 }
 
 class StdIssueInfoGen(implicit p: Parameters) extends BasicMemoryIssueInfoGenerator{
   readyToIssue := (ib.srcState(1) === SrcState.rdy || (ib.isCboZero && ib.srcState(0) === SrcState.rdy)) && ib.stdState === EntryState.s_ready
   io.out.bits.fuType := FuType.std
   io.out.bits.lpv := Mux(ib.isCboZero, ib.lpv(0), ib.lpv(1))
-  io.out.bits.highPriority := false.B
 }
 
 class MemoryStatusArrayEntry(implicit p: Parameters) extends BasicStatusArrayEntry(2){
@@ -78,7 +76,6 @@ class MemoryStatusArrayEntry(implicit p: Parameters) extends BasicStatusArrayEnt
   val sqIdx = new SqPtr
   val isCbo = Bool()
   val isCboZero = Bool()
-  val isReplayed = Bool()
 }
 
 class MemoryStatusArrayEntryUpdateNetwork(stuNum:Int, wakeupWidth:Int)(implicit p: Parameters) extends XSModule {
@@ -186,7 +183,6 @@ class MemoryStatusArrayEntryUpdateNetwork(stuNum:Int, wakeupWidth:Int)(implicit 
 
   when(io.replay.valid){
     counterNext := io.replay.bits
-    miscNext.bits.isReplayed := true.B
   }.elsewhen(staLoadStateNext =/= s_ready && staLoadState === s_ready) {
     counterNext := (1 << 4).U
   }.elsewhen(counter.orR) {

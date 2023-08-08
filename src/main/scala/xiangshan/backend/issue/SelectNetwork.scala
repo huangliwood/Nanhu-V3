@@ -33,7 +33,6 @@ class SelectInfo(implicit p: Parameters) extends XSBundle{
   val rfWen = Bool()
   val fpWen = Bool()
   val robPtr = new RobPtr
-  val highPriority = Bool()
 }
 
 class SelectResp(val bankIdxWidth:Int, entryIdxWidth:Int)(implicit p: Parameters) extends XSBundle {

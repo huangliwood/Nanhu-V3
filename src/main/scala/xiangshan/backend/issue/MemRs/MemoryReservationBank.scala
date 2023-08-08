@@ -92,7 +92,6 @@ class MemoryReservationBank(entryNum:Int, stuNum:Int, lduNum:Int, wakeupWidth:In
     enqEntry.counter := 0.U
     enqEntry.isCbo := isCbo
     enqEntry.isCboZero := isCboZero
-    enqEntry.isReplayed := false.B
     enqEntry
   }
 

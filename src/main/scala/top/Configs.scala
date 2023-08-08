@@ -302,7 +302,7 @@ class WithNKBL3(n: Int, ways: Int = 8, inclusive: Boolean = true, banks: Int = 1
             blockGranularity = log2Ceil(clientDirBytes / core.L2NBanks / l2params.ways / 64 / tiles.size)
           )
         },
-        prefetch=None,
+        prefetch = None,
         prefetchRecv = Some(huancun.prefetch.PrefetchReceiverParams()),
         /*must has spp, otherwise Assert Fail,must same with L2 sppMultiLevelRefill
         sppMultiLevelRefill options:
@@ -349,7 +349,7 @@ class DefaultConfig(n: Int = 1) extends Config(
 )
 
 class NanHuV3Config(n: Int = 1) extends Config(
-  new WithNKBL3(2 * 1024, inclusive = false, banks = 4, ways = 6)
+  new WithNKBL3(6 * 1024, inclusive = false, banks = 4, ways = 6)
     ++ new WithNKBL2(256, inclusive = false, banks = 4, alwaysReleaseData = true)
     ++ new WithNKBL1D(32)
     ++ new BaseConfig(n)

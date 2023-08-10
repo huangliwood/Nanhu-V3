@@ -256,7 +256,7 @@ class MemBlockImp(outer: MemBlock) extends BasicExuBlockImp(outer)
   println(prefetcherOpt)
   val l1dprefetcherOpt: Option[BasePrefecher] = coreParams.l1dprefetcher.get match{
     case pf:StridePrefetcherParams =>
-      val stride = Module(new StridePrefetcher())
+      val stride = Module(new StridePrefetcher(s"${parentModName}_l1dstride"))
       stride.io.enable := RegNextN(io.csrCtrl.l1D_pf_enable_stride, 2, Some(true.B))
 
       //l1 dcache prefetch refill

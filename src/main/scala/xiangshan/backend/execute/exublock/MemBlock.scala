@@ -32,7 +32,7 @@ import xiangshan.backend.execute.fu.csr.{PFEvent, SdtrigExt}
 import xiangshan.backend.execute.fu.fence.{FenceToSbuffer, SfenceBundle}
 import xiangshan.backend.rob.RobLsqIO
 import xiangshan.cache._
-import xiangshan.cache.mmu.{BTlbPtwIO, TLB, TlbReplace}
+import xiangshan.cache.mmu.{BTlbPtwIO, TLB, TlbIO, TlbReplace}
 import xiangshan.mem._
 import xiangshan.mem.prefetch.{BasePrefecher, L1PrefetchReq, SMSParams, SMSPrefetcher,L1PrefetchFuzzer}
 import xiangshan.mem.prefetch.{StridePrefetcherParams,StridePrefetcher}
@@ -101,7 +101,15 @@ class MemBlock(val parentName:String = "Unknown")(implicit p: Parameters) extend
       exuType = ExuType.std
     )
   })
+  private val specialLduParams = ExuConfig(
+    name = "SpecialLduExu",
+    id = 0,
+    complexName = "MemComplex",
+    fuConfigs = Seq(FuConfigs.specialLduCfg),
+    exuType = ExuType.sldu
+  )
   val lduIssueNodes: Seq[ExuInputNode] = lduParams.zipWithIndex.map(e => new ExuInputNode(e._1))
+  val specialLduIssueNode: MemoryBlockIssueNode = new MemoryBlockIssueNode((specialLduParams,0))
   val lduWritebackNodes: Seq[ExuOutputNode] = lduParams.map(new ExuOutputNode(_))
   val staIssueNodes: Seq[ExuInputNode] = staParams.zipWithIndex.map(e => new ExuInputNode(e._1))
   val staWritebackNodes: Seq[ExuOutputNode] = staParams.map(new ExuOutputNode(_))
@@ -118,6 +126,7 @@ class MemBlock(val parentName:String = "Unknown")(implicit p: Parameters) extend
   private val allWritebackNodes = lduWritebackNodes ++ staWritebackNodes ++ stdWritebackNodes
 
   memIssueRouters.foreach(mir => mir.node :*= issueNode)
+  specialLduIssueNode :*= issueNode
   allWritebackNodes.foreach(onode => writebackNode :=* onode)
 
   val dcache = LazyModule(new DCacheWrapper(parentName = parentName + "dcache_"))
@@ -142,6 +151,8 @@ class MemBlockImp(outer: MemBlock) extends BasicExuBlockImp(outer)
     require(iss.in.length == 1)
     iss.in.head._1
   })
+  private val sludIssue = outer.specialLduIssueNode.in.head._1
+  require(outer.specialLduIssueNode.in.length == 1)
   private val staIssues = outer.staIssueNodes.map(iss => {
     require(iss.in.length == 1)
     iss.in.head._1
@@ -334,14 +345,33 @@ class MemBlockImp(outer: MemBlock) extends BasicExuBlockImp(outer)
   val sfence_dup = Seq.fill(NUMSfenceDup)(Pipe(io.sfence))
   val tlbcsr_dup = Seq.fill(NUMTlbCsrDup)(RegNext(io.tlbCsr))
 
-  val dtlb_ld = VecInit(Seq.fill(1){
-    val tlb_ld = Module(new TLB(ld_tlb_ports, 2, ldtlbParams))
-    tlb_ld.io // let the module have name in waveform
+
+  val dtlb_ld_st = VecInit(Seq.fill(1) {
+    val dtlb = Module(new TLB(ld_tlb_ports + exuParameters.StuCnt, 2, OnedtlbParams))
+    dtlb.io
   })
-  val dtlb_st = VecInit(Seq.fill(1){
-    val tlb_st = Module(new TLB(exuParameters.StuCnt, 1, sttlbParams))
-    tlb_st.io // let the module have name in waveform
-  })
+  if(!UseOneDtlb){
+    dtlb_ld_st := DontCare
+  }
+
+  val dtlb_ld : Seq[TlbIO] = if(UseOneDtlb) {
+    dtlb_ld_st.take(ld_tlb_ports)
+  } else {
+    VecInit(Seq.fill(1) {
+      val tlb_ld =  Module(new TLB(ld_tlb_ports, 2, ldtlbParams))
+      tlb_ld.io // let the module have name in waveform
+    })
+  }
+
+  val dtlb_st : Seq[TlbIO] = if(UseOneDtlb){
+    dtlb_ld_st.drop(ld_tlb_ports)
+  } else {
+      VecInit(Seq.fill(1) {
+      val tlb_st = Module(new TLB(exuParameters.StuCnt, 1, sttlbParams))
+      tlb_st.io // let the module have name in waveform
+    })
+  }
+
   val dtlb = dtlb_ld ++ dtlb_st
   val dtlb_reqs = dtlb.flatMap(_.requestor)
   val dtlb_pmps = dtlb.flatMap(_.pmp)
@@ -354,13 +384,15 @@ class MemBlockImp(outer: MemBlock) extends BasicExuBlockImp(outer)
     val replace = Module(new TlbReplace(total_tlb_ports, ldtlbParams))
     replace.io.apply_sep(dtlb_ld.map(_.replace) ++ dtlb_st.map(_.replace), io.ptw.resp.bits.data.entry.tag)
   } else {
-    if (ldtlbParams.outReplace) {
-      val replace_ld = Module(new TlbReplace(ld_tlb_ports, ldtlbParams))
-      replace_ld.io.apply_sep(dtlb_ld.map(_.replace), io.ptw.resp.bits.data.entry.tag)
-    }
-    if (sttlbParams.outReplace) {
-      val replace_st = Module(new TlbReplace(exuParameters.StuCnt, sttlbParams))
-      replace_st.io.apply_sep(dtlb_st.map(_.replace), io.ptw.resp.bits.data.entry.tag)
+    if(!UseOneDtlb){
+      if (ldtlbParams.outReplace) {
+        val replace_ld = Module(new TlbReplace(ld_tlb_ports, ldtlbParams))
+        replace_ld.io.apply_sep(dtlb_ld.map(_.replace), io.ptw.resp.bits.data.entry.tag)
+      }
+      if (sttlbParams.outReplace) {
+        val replace_st = Module(new TlbReplace(exuParameters.StuCnt, sttlbParams))
+        replace_st.io.apply_sep(dtlb_st.map(_.replace), io.ptw.resp.bits.data.entry.tag)
+      }
     }
   }
 
@@ -382,7 +414,7 @@ class MemBlockImp(outer: MemBlock) extends BasicExuBlockImp(outer)
       ptw_resp_next.data.entry.hit(tlb.bits.vpn, RegNext(tlbcsr_dup(i).satp.asid), allType = true, ignoreAsid = true))
   }
   dtlb.foreach(_.ptw.resp.bits := ptw_resp_next.data)
-  if (refillBothTlb) {
+  if (refillBothTlb || UseOneDtlb) {
     dtlb.foreach(_.ptw.resp.valid := ptw_resp_v && Cat(ptw_resp_next.vector).orR)
   } else {
     dtlb_ld.foreach(_.ptw.resp.valid := ptw_resp_v && Cat(ptw_resp_next.vector.take(ld_tlb_ports)).orR)
@@ -428,15 +460,22 @@ class MemBlockImp(outer: MemBlock) extends BasicExuBlockImp(outer)
   for(j <- 0 until TriggerNum)
     PrintTriggerInfo(tEnable(j), tdata(j))
   // LoadUnit
+  sludIssue.rsFeedback := DontCare
   for (i <- 0 until exuParameters.LduCnt) {
     loadUnits(i).io.bankConflictAvoidIn := (i % 2).U
     loadUnits(i).io.redirect := Pipe(redirectIn)
     lduIssues(i).rsFeedback.feedbackSlowLoad := loadUnits(i).io.feedbackSlow
     lduIssues(i).rsFeedback.feedbackFastLoad := loadUnits(i).io.feedbackFast
-    loadUnits(i).io.rsIdx := lduIssues(i).rsIdx
-    loadUnits(i).io.isFirstIssue := lduIssues(i).rsFeedback.isFirstIssue // NOTE: just for dtlb's perf cnt
+    val bnpi = outer.lduIssueNodes(i).in.head._2._1.bankNum / exuParameters.LduCnt
+    val selSldu = sludIssue.issue.valid && sludIssue.rsIdx.bankIdxOH(bnpi * i + bnpi - 1, bnpi * i).orR
+    loadUnits(i).io.rsIdx := Mux(selSldu, sludIssue.rsIdx, lduIssues(i).rsIdx)
+    loadUnits(i).io.isFirstIssue := Mux(selSldu, sludIssue.rsFeedback.isFirstIssue, lduIssues(i).rsFeedback.isFirstIssue)
     // get input form dispatch
-    loadUnits(i).io.ldin <> lduIssues(i).issue
+    loadUnits(i).io.ldin.valid := Mux(selSldu, sludIssue.issue.valid, lduIssues(i).issue.valid)
+    loadUnits(i).io.ldin.bits := Mux(selSldu,sludIssue.issue.bits, lduIssues(i).issue.bits)
+    sludIssue.issue.ready := loadUnits(i).io.ldin.ready
+    lduIssues(i).issue.ready := loadUnits(i).io.ldin.ready
+    when(selSldu){assert(lduIssues(i).issue.valid === false.B)}
     // dcache access
     loadUnits(i).io.dcache <> dcache.io.lsu.load(i)
     // forward
@@ -452,8 +491,8 @@ class MemBlockImp(outer: MemBlock) extends BasicExuBlockImp(outer)
     //cancel
     io.earlyWakeUpCancel.foreach(w => w(i) := RegNext(loadUnits(i).io.cancel,false.B))
     // prefetch
-    val pcDelay1Valid = RegNext(lduIssues(i).issue.fire, false.B)
-    val pcDelay1Bits = RegEnable(lduIssues(i).issue.bits.uop.cf.pc, lduIssues(i).issue.fire)
+    val pcDelay1Valid = RegNext(loadUnits(i).io.ldin.fire, false.B)
+    val pcDelay1Bits = RegEnable(loadUnits(i).io.ldin.bits.uop.cf.pc, loadUnits(i).io.ldin.fire)
     val pcDelay2Bits = RegEnable(pcDelay1Bits, pcDelay1Valid)
     prefetcherOpt.foreach(pf => {
       pf.io.ld_in(i).valid := Mux(pf_train_on_hit,
@@ -654,7 +693,9 @@ class MemBlockImp(outer: MemBlock) extends BasicExuBlockImp(outer)
   // delay dcache refill for 1 cycle for better timing
   // TODO: remove RegNext after fixing refill paddr timing
   // lsq.io.dcache         <> dcache.io.lsu.lsq
-  lsq.io.dcache         := RegNext(dcache.io.lsu.lsq)
+//  lsq.io.dcache         := RegNext(dcache.io.lsu.lsq)
+  lsq.io.dcache.valid := RegNext(dcache.io.lsu.lsq.valid)
+  lsq.io.dcache.bits := RegEnable(dcache.io.lsu.lsq.bits,dcache.io.lsu.lsq.valid)
   lsq.io.release        := dcache.io.lsu.release
   lsq.io.lqCancelCnt <> io.lqCancelCnt
   lsq.io.sqCancelCnt <> io.sqCancelCnt

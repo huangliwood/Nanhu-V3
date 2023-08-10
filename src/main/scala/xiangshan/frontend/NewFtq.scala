@@ -314,16 +314,17 @@ class FTBEntryGen(implicit p: Parameters) extends XSModule with HasBPUParameter 
     }.elsewhen (new_br_offset > oe.allSlotsForBr(i).offset) {
       old_entry_modified.always_taken(i) := false.B
       // all other fields remain unchanged
-    }.otherwise {
-      // case i == 0, remain unchanged
-      if (i != 0) {
-        val noNeedToMoveFromFormerSlot = (i == numBr-1).B && !oe.brSlots.last.valid
-        when (!noNeedToMoveFromFormerSlot) {
-          slot.fromAnotherSlot(oe.allSlotsForBr(i-1))
-          old_entry_modified.always_taken(i) := oe.always_taken(i)
-        }
-      }
     }
+    // .otherwise {
+    //   // case i == 0, remain unchanged
+    //   if (i != 0) {
+    //     val noNeedToMoveFromFormerSlot = (i == numBr-1).B && !oe.brSlots.last.valid
+    //     when (!noNeedToMoveFromFormerSlot) {
+    //       slot.fromAnotherSlot(oe.allSlotsForBr(i-1))
+    //       old_entry_modified.always_taken(i) := oe.always_taken(i)
+    //     }
+    //   }
+    // }
   }
 
   // two circumstances:
@@ -447,6 +448,7 @@ class Ftq(parentName:String = "Unknown")(implicit p: Parameters) extends XSModul
     val toIfu = new FtqToIfuIO
     val toICache = new FtqToICacheIO
     val toBackend = new FtqToCtrlIO
+    val toIbuffer = Valid(new FtqPtr)
 
     val toPrefetch = new FtqPrefechBundle
 
@@ -622,6 +624,8 @@ class Ftq(parentName:String = "Unknown")(implicit p: Parameters) extends XSModul
 
   bpuPtr := bpuPtr + enq_fire
   copied_bpu_ptr.map(_ := bpuPtr + enq_fire)
+  io.toIbuffer.bits := bpuPtr + enq_fire
+  io.toIbuffer.valid := enq_fire
   when (io.toIfu.req.fire && allowToIfu) {
     ifuPtr_write := ifuPtrPlus1
     ifuPtrPlus1_write := ifuPtrPlus2
@@ -638,6 +642,8 @@ class Ftq(parentName:String = "Unknown")(implicit p: Parameters) extends XSModul
   io.toIfu.flushFromBpu.s2.bits := bpu_s2_resp.ftq_idx
   when (bpu_s2_redirect) {
     bpuPtr := bpu_s2_resp.ftq_idx + 1.U
+    io.toIbuffer.bits := bpu_s2_resp.ftq_idx + 1.U
+    io.toIbuffer.valid := true.B
     copied_bpu_ptr.map(_ := bpu_s2_resp.ftq_idx + 1.U)
     // only when ifuPtr runs ahead of bpu s2 resp should we recover it
     when (!isBefore(ifuPtr, bpu_s2_resp.ftq_idx)) {
@@ -651,6 +657,8 @@ class Ftq(parentName:String = "Unknown")(implicit p: Parameters) extends XSModul
   io.toIfu.flushFromBpu.s3.bits := bpu_s3_resp.ftq_idx
   when (bpu_s3_redirect) {
     bpuPtr := bpu_s3_resp.ftq_idx + 1.U
+    io.toIbuffer.valid := true.B
+    io.toIbuffer.bits := bpu_s3_resp.ftq_idx + 1.U
     copied_bpu_ptr.map(_ := bpu_s3_resp.ftq_idx + 1.U)
     // only when ifuPtr runs ahead of bpu s2 resp should we recover it
     when (!isBefore(ifuPtr, bpu_s3_resp.ftq_idx)) {
@@ -822,15 +830,15 @@ class Ftq(parentName:String = "Unknown")(implicit p: Parameters) extends XSModul
   when (RegNext(hit_pd_valid)) {
     // check for false hit
     val pred_ftb_entry = ftb_entry_mem.io.rdata.head
-    val brSlots = pred_ftb_entry.brSlots
+    // val brSlots = pred_ftb_entry.brSlots
     val tailSlot = pred_ftb_entry.tailSlot
     // we check cfis that bpu predicted
 
     // bpu predicted branches but denied by predecode
     val br_false_hit =
-      brSlots.map{
-        s => s.valid && !(pd_reg(s.offset).valid && pd_reg(s.offset).isBr)
-      }.reduce(_||_) ||
+      // brSlots.map{
+      //   s => s.valid && !(pd_reg(s.offset).valid && pd_reg(s.offset).isBr)
+      // }.reduce(_||_) ||
       (tailSlot.valid && pred_ftb_entry.tailSlot.sharing &&
         !(pd_reg(tailSlot.offset).valid && pd_reg(tailSlot.offset).isBr))
 
@@ -982,6 +990,8 @@ class Ftq(parentName:String = "Unknown")(implicit p: Parameters) extends XSModul
     val (idx, offset, flushItSelf) = (r.ftqIdx, r.ftqOffset, RedirectLevel.flushItself(r.level))
     val next = idx + 1.U
     bpuPtr := next
+    io.toIbuffer.bits := next
+    io.toIbuffer.valid := true.B
     copied_bpu_ptr.map(_ := next)
     ifuPtr_write := next
     ifuWbPtr_write := next

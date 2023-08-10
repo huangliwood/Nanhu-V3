@@ -25,6 +25,7 @@ import chisel3.util._
 import xiangshan.backend.execute.exu.ExuType
 import xiangshan.backend.execute.fu.fpu.FMAMidResult
 import freechips.rocketchip.diplomacy.{LazyModule, LazyModuleImp}
+import utils.XSPerfHistogram
 import xiangshan.backend.issue._
 import xiangshan.backend.writeback.{WriteBackSinkNode, WriteBackSinkParam, WriteBackSinkType}
 import xiangshan._
@@ -215,4 +216,6 @@ class FloatingReservationStationImpl(outer:FloatingReservationStation, param:RsP
   wakeup.zipWithIndex.foreach({ case ((_, cfg), idx) =>
     println(s"Wake Port $idx ${cfg.name} of ${cfg.complexName} #${cfg.id}")
   })
+  XSPerfHistogram("issue_num", PopCount(issue.map(_._1.issue.fire)), true.B, 0, issue.length, 1)
+  XSPerfHistogram("valid_entries_num", PopCount(Cat(allocateNetwork.io.entriesValidBitVecList)), true.B, 0, param.entriesNum, 4)
 }

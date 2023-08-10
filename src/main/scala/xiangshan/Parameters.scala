@@ -100,7 +100,7 @@ case class XSCoreParameters
   SCNTables: Int = 4,
   SCCtrBits: Int = 6,
   SCHistLens: Seq[Int] = Seq(0, 4, 10, 16),
-  numBr: Int = 2,
+  numBr: Int = 1,
   branchPredictor: Function3[BranchPredictionResp, Parameters, String, Tuple2[Seq[BasePredictor], BranchPredictionResp]] =
     ((resp_in: BranchPredictionResp, p: Parameters, parentName:String) => {
       val ftb = Module(new FTB(parentName = parentName + "ftb_")(p))
@@ -131,27 +131,19 @@ case class XSCoreParameters
   CommitWidth: Int = 6,
   FtqSize: Int = 64,
   EnableLoadFastWakeUp: Boolean = true, // NOTE: not supported now, make it false
-  IssQueSize: Int = 16,
-  NRPhyRegs: Int = 192,
+  NRPhyRegs: Int = 128,
   LoadQueueSize: Int = 80,
   LoadQueueNWriteBanks: Int = 8,
   StoreQueueSize: Int = 64,
   StoreQueueNWriteBanks: Int = 8,
-  RobSize: Int = 256,
-
-  L1DPrefetchPipelineWidth: Int = 1,
-  RptTimeMax: Int = 1024, //tjz
-  SbpPrefetchSize: Int = 2, //tjz
-  L1dpbSize: Int = 16, //tjz
-  StrideOldListSize: Int = 16, //tjz
-
+  RobSize: Int = 192,
   dpParams: DispatchParameters = DispatchParameters(
     IntDqSize = 16,
     FpDqSize = 16,
     LsDqSize = 16
   ),
-  intRsDepth:Int = 48,
-  fpRsDepth:Int = 48,
+  intRsDepth:Int = 32,
+  fpRsDepth:Int = 32,
   memRsDepth:Int = 48,
   rsBankNum:Int = 4,
   exuParameters: ExuParameters = ExuParameters(),
@@ -162,6 +154,7 @@ case class XSCoreParameters
   LoadPipelineWidth: Int = 2,
   StorePipelineWidth: Int = 2,
   StoreBufferSize: Int = 16,
+  EnsbufferWidth: Int = 2,
   StoreBufferThreshold: Int = 7,
   EnableLoadToLoadForward: Boolean = false,
   EnableFastForward: Boolean = false,
@@ -171,6 +164,7 @@ case class XSCoreParameters
   EnablePTWPreferCache: Boolean = true,
   EnableAccurateLoadError: Boolean = true,
   MMUAsidLen: Int = 16, // max is 16, 0 is not supported now
+  UseOneDtlb: Boolean = false,
   itlbParameters: TLBParameters = TLBParameters(
     name = "itlb",
     fetchi = true,
@@ -183,8 +177,8 @@ case class XSCoreParameters
     superReplacer = Some("plru"),
     shouldBlock = true
   ),
-  ldtlbParameters: TLBParameters = TLBParameters(
-    name = "ldtlb",
+  OnedtlbParams: TLBParameters = TLBParameters(
+    name = "tlb_ld_st",
     normalNSets = 64,
     normalNWays = 1,
     normalAssociative = "sa",
@@ -195,13 +189,25 @@ case class XSCoreParameters
     partialStaticPMP = true,
     saveLevel = true
   ),
-  sttlbParameters: TLBParameters = TLBParameters(
-    name = "sttlb",
-    normalNSets = 64,
+  ldtlbParameters: TLBParameters = TLBParameters(
+    name = "ldtlb",
+    normalNSets = 128,
     normalNWays = 1,
     normalAssociative = "sa",
     normalReplacer = Some("setplru"),
-    superNWays = 16,
+    superNWays = 8,
+    normalAsVictim = true,
+    outReplace = false,
+    partialStaticPMP = true,
+    saveLevel = true
+  ),
+  sttlbParameters: TLBParameters = TLBParameters(
+    name = "sttlb",
+    normalNSets = 128,
+    normalNWays = 1,
+    normalAssociative = "sa",
+    normalReplacer = Some("setplru"),
+    superNWays = 8,
     normalAsVictim = true,
     outReplace = false,
     partialStaticPMP = true,
@@ -270,7 +276,6 @@ trait HasXSParameter {
   val PAddrBits = p(SoCParamsKey).PAddrBits // PAddrBits is Phyical Memory addr bits
 
   val coreParams = p(XSCoreParamsKey)
-  // val L2prefetch = p(L2ParamKey).prefetch
   val env = p(DebugOptionsKey)
 
   val XLEN = coreParams.XLEN
@@ -356,7 +361,6 @@ trait HasXSParameter {
   val RenameWidth = coreParams.RenameWidth
   val CommitWidth = coreParams.CommitWidth
   val FtqSize = coreParams.FtqSize
-  val IssQueSize = coreParams.IssQueSize
   val EnableLoadFastWakeUp = coreParams.EnableLoadFastWakeUp
   val NRPhyRegs = coreParams.NRPhyRegs
   val PhyRegIdxWidth = log2Up(NRPhyRegs)
@@ -379,6 +383,7 @@ trait HasXSParameter {
   val StorePipelineWidth = coreParams.StorePipelineWidth
   val StoreBufferSize = coreParams.StoreBufferSize
   val StoreBufferThreshold = coreParams.StoreBufferThreshold
+  val EnsbufferWidth = coreParams.EnsbufferWidth
   val EnableLoadToLoadForward = coreParams.EnableLoadToLoadForward
   val EnableFastForward = coreParams.EnableFastForward
   val EnableLdVioCheckAfterReset = coreParams.EnableLdVioCheckAfterReset
@@ -396,6 +401,8 @@ trait HasXSParameter {
   val btlbParams = coreParams.btlbParameters
   val l2tlbParams = coreParams.l2tlbParameters
   val NumPerfCounters = coreParams.NumPerfCounters
+  val UseOneDtlb = coreParams.UseOneDtlb
+  val OnedtlbParams = coreParams.OnedtlbParams
 
   val instBytes = if (HasCExtension) 2 else 4
   val instOffsetBits = log2Ceil(instBytes)

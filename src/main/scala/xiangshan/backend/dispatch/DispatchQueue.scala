@@ -22,7 +22,7 @@ package xiangshan.backend.dispatch
 import chisel3._
 import chisel3.util._
 import chipsalliance.rocketchip.config.Parameters
-import utils.HasPerfEvents
+import utils.{HasPerfEvents, XSPerfHistogram}
 import xiangshan._
 import xs.utils.{CircularQueuePtr, HasCircularQueuePtrHelper, ParallelPriorityEncoder, ParallelPriorityMux, UIntToMask}
 
@@ -151,6 +151,7 @@ class DispatchQueue (size: Int, enqNum: Int, deqNum: Int)(implicit p: Parameters
     assert(Mux(i.U < readyNum, io.deq(i).ready === true.B, io.deq(i).ready === false.B))
   }
 
+  XSPerfHistogram("valid_entries_num", validEntriesNum, true.B, 0, size, size / 4)
 
   val perfEvents = Seq(
     ("dispatchq_in", actualEnqNum),

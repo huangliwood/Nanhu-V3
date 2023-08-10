@@ -18,7 +18,7 @@ TOP = XSTop
 SIM_TOP   = SimTop
 FPGATOP = top.TopMain
 BUILD_DIR ?= ./build
-TOP_V = $(BUILD_DIR)/$(TOP).sv
+TOP_V = $(BUILD_DIR)/$(TOP).v
 SCALA_FILE = $(shell find ./src/main/scala -name '*.scala')
 TEST_FILE = $(shell find ./src/test/scala -name '*.scala')
 MEM_GEN = ./scripts/vlsi_mem_gen
@@ -35,9 +35,9 @@ CONSIDER_FSDB ?= 1
 MFC ?= 0
 
 ifdef FLASH
-	RUN_OPTS := +flash=$(RUN_BIN_DIR)/$(RUN_BIN).bin
+	RUN_OPTS := +flash=$(RUN_BIN_DIR)/$(RUN_BIN)
 else
-	RUN_OPTS := +workload=$(RUN_BIN_DIR)/$(RUN_BIN).bin
+	RUN_OPTS := +workload=$(RUN_BIN_DIR)/$(RUN_BIN)
 endif
 ifeq ($(CONSIDER_FSDB),1)
 	RUN_OPTS += +dump-wave=fsdb
@@ -162,13 +162,12 @@ emu:
 	$(MAKE) -C ./difftest emu SIM_TOP=SimTop DESIGN_DIR=$(NOOP_HOME) NUM_CORES=$(NUM_CORES)
 
 emu_rtl:
-	$(MAKE) -C ./difftest emu_rtl SIM_TOP=SimTop DESIGN_DIR=$(NOOP_HOME) NUM_CORES=$(NUM_CORES) EMU_TRACE=1 EMU_THREADS=8
+	$(MAKE) -C ./difftest emu_rtl SIM_TOP=SimTop DESIGN_DIR=$(NOOP_HOME) NUM_CORES=$(NUM_CORES) EMU_TRACE=1 EMU_THREADS=16
 
-EMU_RUN_OPTS_EXTRA ?=
-EMU_RUN_OPTS = -i $(RUN_BIN_DIR)/$(RUN_BIN).bin
+EMU_RUN_OPTS = -i $(RUN_BIN_DIR)/$(RUN_BIN)
 EMU_RUN_OPTS += --diff $(ABS_WORK_DIR)/ready-to-run/riscv64-nemu-interpreter-so
 EMU_RUN_OPTS += --wave-path $(ABS_WORK_DIR)/sim/emu/$(RUN_BIN)/tb_top.vcd
-EMU_RUN_OPTS += $(EMU_RUN_OPTS_EXTRA)
+EMU_RUN_OPTS += --enable-fork
 emu_rtl-run:
 	$(shell if [ ! -e $(ABS_WORK_DIR)/sim/emu/$(RUN_BIN) ];then mkdir -p $(ABS_WORK_DIR)/sim/emu/$(RUN_BIN); fi)
 	touch sim/emu/$(RUN_BIN)/sim.log

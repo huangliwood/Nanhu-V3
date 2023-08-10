@@ -33,7 +33,8 @@ import xiangshan.backend.execute.exublock.ExuParameters
 import device.{EnableJtag, XSDebugModuleParams}
 import huancun._
 import coupledL2._
-import xiangshan.mem.prefetch.{SMSParams,StridePrefetcherParams}
+import coupledL3._
+import xiangshan.mem.prefetch.SMSParams
 
 class BaseConfig(n: Int) extends Config((site, here, up) => {
   case XLen => 64
@@ -82,6 +83,7 @@ class MinimalConfig(n: Int = 1) extends Config(
           LsDqSize = 12
         ),
         exuParameters = ExuParameters(),
+        prefetcher = None,
         icacheParameters = ICacheParameters(
           nSets = 64, // 16KB ICache
           tagECC = Some("parity"),
@@ -170,18 +172,18 @@ class MinimalConfig(n: Int = 1) extends Config(
       val tiles = site(XSTileKey)
       up(SoCParamsKey).copy(
         L3CacheParamsOpt = Some(up(SoCParamsKey).L3CacheParamsOpt.get.copy(
-          sets = 1024,
-          inclusive = false,
-          clientCaches = tiles.map{ p =>
-            CacheParameters(
-              "dcache",
-              sets = 2 * p.dcacheParametersOpt.get.nSets,
-              ways = p.dcacheParametersOpt.get.nWays + 2,
-              blockGranularity = log2Ceil(2 * p.dcacheParametersOpt.get.nSets),
-              aliasBitsOpt = None
-            )
-          },
-          simulation = !site(DebugOptionsKey).FPGAPlatform
+          // sets = 1024,
+          // inclusive = false,
+          // clientCaches = tiles.map{ p =>
+          //   CacheParameters(
+          //     "dcache",
+          //     sets = 2 * p.dcacheParametersOpt.get.nSets,
+          //     ways = p.dcacheParametersOpt.get.nWays + 2,
+          //     blockGranularity = log2Ceil(2 * p.dcacheParametersOpt.get.nSets),
+          //     aliasBitsOpt = None
+          //   )
+          // },
+          // simulation = !site(DebugOptionsKey).FPGAPlatform
         )),
         L3NBanks = 1
       )
@@ -267,7 +269,6 @@ class WithNKBL2
         PrefetchReceiverParams() => spp has cross level refill
         None                     => spp only refill L2
         */
-        // prefetch = None
         // enablePerf = true,
         // sramDepthDiv = 2,
         // tagECC = None,
@@ -289,35 +290,46 @@ class WithNKBL3(n: Int, ways: Int = 8, inclusive: Boolean = true, banks: Int = 1
     }.sum
     up(SoCParamsKey).copy(
       L3NBanks = banks,
-      L3CacheParamsOpt = Some(HCCacheParameters(
+      // L3CacheParamsOpt = Some(HCCacheParameters(
+      //   name = "L3",
+      //   level = 3,
+      //   ways = ways,
+      //   sets = sets,
+      //   inclusive = inclusive,
+      //   clientCaches = tiles.map{ core =>
+      //     val l2params = core.L2CacheParamsOpt.get.toCacheParams
+      //     l2params.copy(
+      //       sets = 2 * clientDirBytes / core.L2NBanks / l2params.ways / 64,
+      //       blockGranularity = log2Ceil(clientDirBytes / core.L2NBanks / l2params.ways / 64 / tiles.size)
+      //     )
+      //   },
+      //   enablePerf = true,
+      //   ctrl = None,
+      //   sramClkDivBy2 = true,
+      //   sramDepthDiv = 4,
+      //   tagECC = None,
+      //   dataECC = None,
+      //   hasShareBus = false,
+      //   hasMbist = false,
+      //   simulation = !site(DebugOptionsKey).FPGAPlatform
+      // ))
+      L3CacheParamsOpt = Some(L3Param(
         name = "L3",
-        level = 3,
         ways = ways,
         sets = sets,
-        inclusive = inclusive,
+        inclusionPolicy = "NINE",
         clientCaches = tiles.map{ core =>
           val l2params = core.L2CacheParamsOpt.get.toCacheParams
           l2params.copy(
-            sets = 2 * clientDirBytes / core.L2NBanks / l2params.ways / 64,
+            sets = clientDirBytes / core.L2NBanks / l2params.ways / 64,
+            ways = l2params.ways * 2,
             blockGranularity = log2Ceil(clientDirBytes / core.L2NBanks / l2params.ways / 64 / tiles.size)
           )
         },
         prefetch=None,
-        prefetchRecv = Some(huancun.prefetch.PrefetchReceiverParams()),
-        /*must has spp, otherwise Assert Fail,must same with L2 sppMultiLevelRefill
-        sppMultiLevelRefill options:
-        PrefetchReceiverParams() => spp has cross level refill
-        None                     => spp only refill L2
-        */
-        enablePerf = true,
-        ctrl = None,
-        sramClkDivBy2 = true,
-        sramDepthDiv = 4,
-        tagECC = None,
-        dataECC = None,
-        hasShareBus = false,
-        hasMbist = false,
-        simulation = !site(DebugOptionsKey).FPGAPlatform
+        enablePerf = false,
+        tagEccCode = None,
+        dataEccCode = None
       ))
     )
 })
@@ -342,15 +354,8 @@ class MediumConfig(n: Int = 1) extends Config(
 )
 
 class DefaultConfig(n: Int = 1) extends Config(
-  new WithNKBL3(6 * 1024, inclusive = false, banks = 4, ways = 6)
-    ++ new WithNKBL2(2 * 512, inclusive = false, banks = 4, alwaysReleaseData = true)
-    ++ new WithNKBL1D(64)
-    ++ new BaseConfig(n)
-)
-
-class NanHuV3Config(n: Int = 1) extends Config(
-  new WithNKBL3(2 * 1024, inclusive = false, banks = 4, ways = 6)
+  new WithNKBL3(4 * 1024, inclusive = false, banks = 4, ways = 8)
     ++ new WithNKBL2(256, inclusive = false, banks = 4, alwaysReleaseData = true)
-    ++ new WithNKBL1D(32)
+    ++ new WithNKBL1D(64)
     ++ new BaseConfig(n)
 )

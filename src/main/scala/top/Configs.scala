@@ -34,7 +34,7 @@ import device.{EnableJtag, XSDebugModuleParams}
 import huancun._
 import coupledL2._
 import coupledL3._
-import xiangshan.mem.prefetch.SMSParams
+import xiangshan.mem.prefetch.{SMSParams,StridePrefetcherParams}
 
 class BaseConfig(n: Int) extends Config((site, here, up) => {
   case XLen => 64
@@ -66,7 +66,7 @@ class MinimalConfig(n: Int = 1) extends Config(
         DecodeWidth = 2,
         RenameWidth = 2,
         FetchWidth = 4,
-        IssQueSize = 8,
+//        IssQueSize = 8,
         NRPhyRegs = 64,
         LoadQueueSize = 16,
         LoadQueueNWriteBanks = 4,
@@ -255,7 +255,8 @@ class WithNKBL2
         reqField = Seq(utility.ReqSourceField()),
         echoField = Seq(huancun.DirtyField()),
         elaboratedTopDown = false,
-        prefetch = Some(coupledL2.prefetch.HyperPrefetchParams()), /*
+        prefetch = Some(coupledL2.prefetch.PrefetchReceiverParams()),
+        /*
         del L2 prefetche recv option, move into: prefetch =  PrefetchReceiverParams
         prefetch options:
           SPPParameters          => spp only
@@ -263,7 +264,7 @@ class WithNKBL2
           PrefetchReceiverParams => sms+bop
           HyperPrefetchParams    => spp+bop+sms
         */
-        sppMultiLevelRefill = Some(coupledL2.prefetch.PrefetchReceiverParams()),
+//        sppMultiLevelRefill = Some(coupledL2.prefetch.PrefetchReceiverParams()),
         /*must has spp, otherwise Assert Fail
         sppMultiLevelRefill options:
         PrefetchReceiverParams() => spp has cross level refill

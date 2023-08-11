@@ -22,7 +22,7 @@ import chisel3.util._
 import freechips.rocketchip.diplomacy.{BundleBridgeSource, LazyModule, LazyModuleImp}
 import freechips.rocketchip.tile.HasFPUParameters
 import coupledL2.PrefetchRecv
-import coupledL2.prefetch.{PrefetchReceiverParams, HyperPrefetchParams}
+import coupledL2.prefetch.{PrefetchReceiverParams}
 import utils._
 import xiangshan._
 import xiangshan.backend.execute.exu.{ExuConfig, ExuInputNode, ExuOutputNode, ExuType}

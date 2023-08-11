@@ -137,11 +137,13 @@ case class XSCoreParameters
   StoreQueueSize: Int = 64,
   StoreQueueNWriteBanks: Int = 8,
   RobSize: Int = 192,
+
   L1DPrefetchPipelineWidth: Int = 1,
   RptTimeMax: Int = 1024, //tjz
   SbpPrefetchSize: Int = 2, //tjz
   L1dpbSize: Int = 16, //tjz
   StrideOldListSize: Int = 16, //tjz
+
   dpParams: DispatchParameters = DispatchParameters(
     IntDqSize = 16,
     FpDqSize = 16,
@@ -281,7 +283,6 @@ trait HasXSParameter {
   val PAddrBits = p(SoCParamsKey).PAddrBits // PAddrBits is Phyical Memory addr bits
 
   val coreParams = p(XSCoreParamsKey)
-  // val L2prefetch = p(L2ParamKey).prefetch
   val env = p(DebugOptionsKey)
 
   val XLEN = coreParams.XLEN

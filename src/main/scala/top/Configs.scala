@@ -66,6 +66,7 @@ class MinimalConfig(n: Int = 1) extends Config(
         DecodeWidth = 2,
         RenameWidth = 2,
         FetchWidth = 4,
+//        IssQueSize = 8,
         NRPhyRegs = 64,
         LoadQueueSize = 16,
         LoadQueueNWriteBanks = 4,
@@ -82,6 +83,7 @@ class MinimalConfig(n: Int = 1) extends Config(
           LsDqSize = 12
         ),
         exuParameters = ExuParameters(),
+        prefetcher = None,
         icacheParameters = ICacheParameters(
           nSets = 64, // 16KB ICache
           tagECC = Some("parity"),
@@ -358,9 +360,3 @@ class DefaultConfig(n: Int = 1) extends Config(
     ++ new BaseConfig(n)
 )
 
-class NanHuV3Config(n: Int = 1) extends Config(
-  new WithNKBL3(6 * 1024, inclusive = false, banks = 4, ways = 6)
-    ++ new WithNKBL2(256, inclusive = false, banks = 4, alwaysReleaseData = true)
-    ++ new WithNKBL1D(32)
-    ++ new BaseConfig(n)
-)

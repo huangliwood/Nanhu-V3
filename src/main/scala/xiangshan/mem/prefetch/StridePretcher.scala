@@ -7,8 +7,10 @@ import utils._
 import xiangshan.cache.HasDCacheParameters
 import xiangshan.cache.mmu._
 import xiangshan.mem.trace.L1MissTrace
-import xs.utils._
-import utility.{SRAMTemplate,ChiselDB}
+
+import xs.utils.sram.{SRAMTemplate}
+import xs.utils.{HasCircularQueuePtrHelper}
+import utility.{ChiselDB}
 
 case class StridePrefetcherParams
 (
@@ -76,7 +78,7 @@ class PrefetchFilterReq(implicit p: Parameters) extends XSBundle with HasStrideP
   val count = UInt(3.W)
 }
 
-class TrainFilterTable()(implicit p: Parameters) extends XSModule with HasStridePrefetcherModuleHelper {
+class TrainFilterTable(val parentName:String = "Unknown")(implicit p: Parameters) extends XSModule with HasStridePrefetcherModuleHelper {
   val io = IO(new Bundle() {
     val req = Flipped(ValidIO(UInt(PAddrBits.W)))
     val filtered = Output(Bool())
@@ -116,7 +118,7 @@ class TrainFilterTable()(implicit p: Parameters) extends XSModule with HasStride
 }
 
 
-class PrefetchFilterTable()(implicit p: Parameters) extends XSModule with HasStridePrefetcherModuleHelper {
+class PrefetchFilterTable(val parentName:String = "Unknown")(implicit p: Parameters) extends XSModule with HasStridePrefetcherModuleHelper {
   val io = IO(new Bundle() {
     val req = Flipped(DecoupledIO(new PrefetchFilterReq))
     val resp = DecoupledIO(new L1PrefetchReq)
@@ -125,15 +127,19 @@ class PrefetchFilterTable()(implicit p: Parameters) extends XSModule with HasStr
   def idx(addr:      UInt) = addr(log2Up(pfTableEntries) - 1, 0)
   def tag(addr:      UInt) = addr(PAddrBits - pageOffsetBits - 1, log2Up(pfTableEntries)) 
   def fTableEntry() = new Bundle {
-    val valid = Bool()
     val tag = UInt(pfTagBits.W)
     val bitMap = Vec(64, Bool())
   }
 
   val inProcess = RegInit(false.B)
   val fTable = Module(
-    new SRAMTemplate(fTableEntry(), set = pfTableEntries, way = 1, bypassWrite = true, shouldReset = true)
+    new SRAMTemplate(fTableEntry(), set = pfTableEntries, way = 1, bypassWrite = true, shouldReset = true,
+      hasMbist = coreParams.hasMbist,
+      hasShareBus = coreParams.hasShareBus,
+      parentName = s"${parentName}_fTable"
+    )
   )
+  val valid_tag = RegInit(VecInit(Seq.fill(pfTableEntries)(false.B)))
 
   val q = Module(new ReplaceableQueueV2(chiselTypeOf(io.req.bits), pfTableQueueEntries))
   q.io.enq <> io.req //change logic to replace the tail entry
@@ -154,7 +160,7 @@ class PrefetchFilterTable()(implicit p: Parameters) extends XSModule with HasStr
   fTable.io.r.req.valid := enread
   fTable.io.r.req.bits.setIdx := idx(pageAddr)
   rData := fTable.io.r.resp.data(0)
-  hit := rData.valid && rData.tag === tag(RegNext(pageAddr))
+  hit := valid_tag(fTable.io.r.req.bits.setIdx) && rData.tag === tag(RegNext(pageAddr))
   val hitForMap = hit && rData.bitMap(RegNext(blkOffset))
 
   val newBitMap = Wire(Vec(64, Bool()))
@@ -163,9 +169,9 @@ class PrefetchFilterTable()(implicit p: Parameters) extends XSModule with HasStr
   } .otherwise {
     newBitMap := rData.bitMap.zipWithIndex.map{ case (b, i) => Mux(i.asUInt === RegNext(blkOffset), true.B, false.B)}
   }
+  valid_tag(fTable.io.r.req.bits.setIdx) := true.B
   fTable.io.w.req.valid := !hitForMap && RegNext(fTable.io.r.req.fire())
   fTable.io.w.req.bits.setIdx := idx(RegNext(pageAddr))
-  fTable.io.w.req.bits.data(0).valid := true.B
   fTable.io.w.req.bits.data(0).tag := tag(RegNext(pageAddr))
   fTable.io.w.req.bits.data(0).bitMap := newBitMap
 
@@ -197,7 +203,7 @@ class PrefetchFilterTable()(implicit p: Parameters) extends XSModule with HasStr
 }
 
 
-class StridePrefetcher()(implicit p: Parameters) extends BasePrefecher with HasStridePrefetcherModuleHelper {
+class StridePrefetcher(val parentName:String = "Unknown")(implicit p: Parameters) extends BasePrefecher with HasStridePrefetcherModuleHelper {
   require(exuParameters.LduCnt == 2)
 
   val tfTable = Module(new TrainFilterTable())
@@ -240,14 +246,18 @@ class StridePrefetcher()(implicit p: Parameters) extends BasePrefecher with HasS
   def idx(addr:      UInt) = addr(log2Up(sTableEntries) - 1, 0)
   def tag(addr:      UInt) = addr(VAddrBits - 1, log2Up(sTableEntries))
   def sTableEntry() = new Bundle {
-    val valid = Bool()
     val tag = UInt(sTagBits.W)
     val lastBlock = UInt(blkOffsetBits.W)
     val stride = SInt((blkOffsetBits + 1).W)
     val confidence = UInt(2.W)
   }
+  val valid_reg=RegInit(VecInit(Seq.fill(sTableEntries)(false.B)))
   val sTable = Module(
-    new SRAMTemplate(sTableEntry(), set = sTableEntries, way = 1, bypassWrite = true, shouldReset = true)
+    new SRAMTemplate(sTableEntry(), set = sTableEntries, way = 1, bypassWrite = true, shouldReset = true,
+      hasMbist = coreParams.hasMbist,
+      hasShareBus = coreParams.hasShareBus,
+      parentName = s"${parentName}_sTable"
+    )
   )
   val train_ld_pc_s0 = train_ld.uop.cf.pc
   val train_ld_va_s0 = train_ld.vaddr
@@ -266,7 +276,7 @@ class StridePrefetcher()(implicit p: Parameters) extends BasePrefecher with HasS
   val train_ld_va_s1 = RegNext(train_ld_va_s0)
   val train_ld_pa_s1 = RegNext(train_ld.paddr)
   val train_block_s1 = RegNext(train_block_s0)
-  val hit = rData.valid && rData.tag === tag(train_ld_pc_s1)
+  val hit = valid_reg(idx(train_ld_pc_s0)) && rData.tag === tag(train_ld_pc_s1)
   val delta : SInt = train_block_s1.asSInt - rData.lastBlock.asSInt
   val mat = delta === rData.stride 
   val enprefetch = WireDefault(false.B)
@@ -290,7 +300,7 @@ class StridePrefetcher()(implicit p: Parameters) extends BasePrefecher with HasS
       }
     }
   } .otherwise {
-    wData.valid := true.B
+
     wData.tag := tag(train_ld_pc_s1)
     wData.stride := delta
     wData.confidence := 1.U
@@ -298,6 +308,7 @@ class StridePrefetcher()(implicit p: Parameters) extends BasePrefecher with HasS
   sTable.io.w.req.valid := RegNext(sTable.io.r.req.fire()) && delta =/= 0.S
   sTable.io.w.req.bits.setIdx := idx(train_ld_pc_s1)
   sTable.io.w.req.bits.data(0) := wData
+  valid_reg(sTable.io.w.req.bits.setIdx) := true.B
 
   pfTable.io.req.valid := delta =/= 0.S && enprefetch
   pfTable.io.req.bits.paddr_base := train_ld_pa_s1(PAddrBits - 1, blkBits)

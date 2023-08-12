@@ -157,10 +157,8 @@ class LoadUnit_S0(implicit p: Parameters) extends XSModule with HasDCacheParamet
   io.dcacheReq.bits.addr := s0_vaddr
   io.dcacheReq.bits.mask := s0_mask
   io.dcacheReq.bits.data := DontCare
-  when(s0_ishwPrefetchRead) {
-    io.dcacheReq.bits.instrtype := HARDWARE_PREFETCH.U
-  }.elsewhen(s0_isSoftPrefetch) {
-    io.dcacheReq.bits.instrtype := SOFT_PREFETCH.U
+  when(s0_ishwPrefetchRead || s0_isSoftPrefetch) {
+    io.dcacheReq.bits.instrtype := DCACHE_PREFETCH_SOURCE.U
   }.otherwise {
     io.dcacheReq.bits.instrtype := LOAD_SOURCE.U
   }
@@ -303,8 +301,8 @@ class LoadUnit_S1(implicit p: Parameters) extends XSModule {
   io.out.bits.ptwBack := io.dtlbResp.bits.ptwBack
   io.out.bits.rsIdx := io.in.bits.rsIdx
 
-  io.out.bits.isSoftPrefetch := io.in.bits.isSoftPrefetch
-  io.out.bits.ishwPrefetch := io.in.bits.ishwPrefetch
+  io.out.bits.isSoftPrefetch := s1_is_sw_prefetch
+  io.out.bits.ishwPrefetch := s1_is_hw_prefetch
 
   io.in.ready := !io.in.valid || io.out.ready
 

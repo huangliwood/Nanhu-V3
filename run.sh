@@ -18,13 +18,15 @@ LOG_PATH=""
 #EMU_Parameters
 CORE_NUMS=$(grep -r "processor" /proc/cpuinfo | wc -l)
 EMU_THREADS=$(( CORE_NUMS * THREADS_USE))
-EMU_THREADS=16
+EMU_THREADS=8
 MinMem=64
 FAST_COMPILE=0
 COMPILE_FILE="coremark"
 USE_VERILATER=0
 #SIM PARAMETERS
 EMU_ARGS=""
+EMU_I=20000000
+EMU_W=500000
 TEST_BIN="microbench"
 NO_WAVE=0
 EMU_TRACE_BEGIN=00000
@@ -39,8 +41,8 @@ TIMESTAMP=$(date '+%Y-%m-%d@%H:%M')
 #VCS PARAMETERS
 VCS_OUTPUT="$PRO_PATH/sim"
 #VERDI PARAMETERS
-VERDI_OUTPUT="$PRO_PATH/$OUTPUT_FILE"
-VERDI_FLIST="$VERDI_OUTPUT/$FILE_LIST"
+VERDI_OUTPUT=""
+VERDI_FLIST=""
 
 
 RTL_PATH="$PRO_PATH/rtl"
@@ -281,7 +283,7 @@ fun_test(){
     cd $PRO_PATH
     [ ! -d "logs" ] && mkdir logs
     echo $TEST_BIN
-    TEST_BIN_1=$(find $NOOP_HOME/ready-to-run -maxdepth 1 -name "$TEST_BIN*" -print | awk -F " " '{print $1}' | head -n 1)
+    [ ! -f "$TEST_BIN" ] && TEST_BIN_1=$(find $NOOP_HOME/ready-to-run -maxdepth 1 -name "$TEST_BIN*" -print | awk -F " " '{print $1}' | head -n 1)
     ARG=""
 
     [ $USE_VCS -eq 1 ] && {
@@ -298,16 +300,18 @@ fun_test(){
         if [[ $EMU_ARGS != "" ]];then
             ARG=$EMU_ARGS
         else
-            ARG="-I 20000000 -W 500000"
+            ARG="-I $EMU_I -W $EMU_W"
         fi
-        [[ "$TEST_BIN_1" != "" ]] && TEST_BIN=$TEST_BIN_1
         [[ $NO_WAVE -ne 1 ]] && ARG="$ARG --dump-wave -b $EMU_TRACE_BEGIN -e $EMU_TRACE_END --wave-path=$PRO_PATH/$OUTPUT_FILE/$TIMESTAMP.vcd"
         ARG="$ARG --force-dump-result "
-        NAME=${TEST_BIN##*/}
-        [ "$TEST_BIN_1" == "" ] && TEST_BIN=$(head -n 1 $(find /bigdata/zfw/spec_cpt/take_cpt/$TEST_BIN* -type f  -print))
-        [ "$TEST_BIN_1" == "" ] && NAME="$1_$NAME"
-        echo $TEST_BIN | awk -F " " '{print $1}'
 
+        [ ! -f "$TEST_BIN" ] && {
+            [[ "$TEST_BIN_1" != "" ]] && TEST_BIN=$TEST_BIN_1
+            [ "$TEST_BIN_1" == "" ] && TEST_BIN=$(head -n 1 $(find /bigdata/zfw/spec_cpt/take_cpt/$TEST_BIN* -type f  -print))
+            [ "$TEST_BIN_1" == "" ] && NAME="$1_$NAME"
+            echo $TEST_BIN | awk -F " " '{print $1}'
+        }
+        NAME=${TEST_BIN##*/}
         LOGGED=1
         LOG_PATH="$PRO_PATH/logs/$(date '+%m-%d')/$OUTPUT_FILE" && LOG="$LOG_PATH/$NAME.$(date '+%Y-%m-%d@%H:%M:%S').t${EMU_THREADS}.emu.log"
         RUN=$(realpath $(find $OUTPUT_FILE -name "$SIMULATOR*" -type f -executable | head -n 1))
@@ -361,7 +365,7 @@ fun_openVerdi(){
         fun_findlatestVCDFile "$VERDI_OUTPUT"
         [[ -z "$LATEST_FSDB_FILE" ]] && {
             run_cmd "vcd2fsdb $LATEST_VCD_FILE" "vcd2fsdb" "$VERDI_OUTPUT"
-            sleep 1 
+            sleep 1
             LATEST_FSDB_FILE=$(find $VERDI_OUTPUT -type f -name "$LATEST_VCD_FILE.fsdb")
         }
         [[ -z "$LATEST_FSDB_FILE" ]] && echo "${RED}error" && exit 1
@@ -467,7 +471,7 @@ fun_main(){
         tmp=${2#*\'}
         ARG=${tmp%\'*}
         [[ $ARG == "-"* ]] && ARG=""
-        
+
         case "$1" in
             -h|H|--help) print_help;;
             --simv) SIMULATOR="simv" && USE_VCS=1;;
@@ -491,6 +495,8 @@ fun_main(){
                         --no-diff) EMU_ARGS="$EMU_ARGS --no-diff ";echo -ne "${PURPLE}enable dump wave${NC}";;
                         -i)TEST_BIN=$ARG && echo -ne "${PURPLE}enable dump wave${NC}";;
                         --no-wave)NO_WAVE=1;echo -ne "${PURPLE}disable dump wave${NC}";;
+                        -I)EMU_I=$ARG;;
+                        -W)EMU_W=$ARG;;
                         -b)EMU_TRACE_BEGIN=$ARG; echo -ne "${PURPLE} wave range [$ARG ${NC},";;
                         -e)EMU_TRACE_END=$ARG; echo -ne "${PURPLE}$ARG] ${NC}";;
                         ?)break;;
@@ -512,6 +518,10 @@ fun_main(){
 
 fun_main "$@"
 fun_checkEnv
+#VERDI PARAMETERS
+VERDI_OUTPUT="$PRO_PATH/$OUTPUT_FILE"
+VERDI_FLIST="$VERDI_OUTPUT/$FILE_LIST"
+
 [[ $CMD_RES -eq 0 ]] && [[ $op_tlTest -eq 1 ]] && fun_tlTest
 [[ $CMD_RES -eq 0 ]] && [[ $op_build -eq 1 ]] && fun_build $CONFIG
 [[ $CMD_RES -eq 0 ]] && [[ $op_runSim -eq 1 ]] && fun_test

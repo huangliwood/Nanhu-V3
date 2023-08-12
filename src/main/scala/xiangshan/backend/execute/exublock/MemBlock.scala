@@ -273,10 +273,11 @@ class MemBlockImp(outer: MemBlock) extends BasicExuBlockImp(outer)
       //l1 dcache prefetch refill
       if(coreParams.l1dprefetchRefill.get.equals(true)){
         val pf_to_l1d = Pipe(stride.io.l1_pf_req.get, 1)
-        loadUnits.foreach(load_unit => {
-          load_unit.io.prefetch_req.valid := pf_to_l1d.valid
+        val pf_split_valid=Seq(pf_to_l1d.valid && pf_to_l1d.bits.paddr(0),pf_to_l1d.valid && !pf_to_l1d.bits.paddr(0))
+        for ((load_unit, i) <- loadUnits.zipWithIndex) {
+          load_unit.io.prefetch_req.valid := pf_split_valid(i)
           load_unit.io.prefetch_req.bits := pf_to_l1d.bits
-        })
+        }
       }
       Some(stride)
     case _ => None
@@ -581,19 +582,20 @@ class MemBlockImp(outer: MemBlock) extends BasicExuBlockImp(outer)
     p"has trigger fire vec ${lduWritebacks(i).bits.uop.cf.trigger.backendCanFire}\n")
   }
   // l1 pf fuzzer interface
-  val DebugEnableL1PFFuzzer = false
+  val DebugEnableL1PFFuzzer = true
   if (DebugEnableL1PFFuzzer) {
     // l1 pf req fuzzer
     val fuzzer = Module(new L1PrefetchFuzzer())
     fuzzer.io.vaddr := DontCare
     fuzzer.io.paddr := DontCare
     dontTouch(fuzzer.io)
+    val fuzzer_valid = Seq(fuzzer.io.req.valid && fuzzer.io.req.bits.paddr(0),fuzzer.io.req.valid && !fuzzer.io.req.bits.paddr(0))
     // override load_unit prefetch_req
-    loadUnits.foreach(load_unit => {
-      load_unit.io.prefetch_req.valid := fuzzer.io.req.valid
+    for((load_unit,i) <- loadUnits.zipWithIndex) {
+      load_unit.io.prefetch_req.valid := fuzzer_valid(i)
       load_unit.io.prefetch_req.bits := fuzzer.io.req.bits
       // load_unit.io.prefetch_req.bits.paddr := 0x080000000L.U(PAddrBits.W)
-    })
+    }
 
     fuzzer.io.req.ready := true.B
   }

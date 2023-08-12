@@ -100,15 +100,16 @@ trait HasDCacheParameters extends HasL1CacheParameters {
 
   def blockProbeAfterGrantCycles = 8 // give the processor some time to issue a request after a grant
 
-  def nSourceType = 3
-  def sourceTypeWidth = log2Up(nSourceType)
   def LOAD_SOURCE = 0
   def STORE_SOURCE = 1
   def AMO_SOURCE = 2
-  def SOFT_PREFETCH = 3
-  def HARDWARE_PREFETCH = 4
 
-  def HW_PREFETCH_STRIDE = 5
+  // source >=3 is all prefetch source
+  def DCACHE_PREFETCH_SOURCE = 3
+
+  def nSourceType = 6
+
+  def sourceTypeWidth = log2Up(nSourceType)
 
   // each source use a id to distinguish its multiple reqs
   def reqIdWidth = log2Up(nEntries) max log2Up(StoreBufferSize)
@@ -272,6 +273,14 @@ class ReplacementAccessBundle(implicit p: Parameters) extends DCacheBundle {
 class ReplacementWayReqIO(implicit p: Parameters) extends DCacheBundle {
   val set = ValidIO(UInt(log2Up(nSets).W))
   val way = Input(UInt(log2Up(nWays).W))
+}
+
+class DCacheExtraMeta(implicit p: Parameters) extends DCacheBundle
+{
+  val prefetch = Bool() // cache line is first required by prefetch
+  val access = Bool() // cache line has been accessed by load / store
+
+  // val debug_access_timestamp = UInt(64.W) // last time a load / store / refill access that cacheline
 }
 
 // memory request in word granularity(load, mmio, lr/sc, atomics)
@@ -503,6 +512,10 @@ class DCacheImp(outer: DCache) extends LazyModuleImp(outer) with HasDCacheParame
   val bankedDataArray = Module(new BankedDataArray(parentName = outer.parentName + "bankedDataArray_"))
   val metaArray = Module(new AsynchronousMetaArray(readPorts = 3, writePorts = 2))
   val errorArray = Module(new ErrorArray(readPorts = 3, writePorts = 2)) // TODO: add it to meta array
+  val prefetchArray = coreParams.l1dprefetchRefill.map(_ =>
+    Module(new FlagMetaArray(readPorts = LoadPipelineWidth + 1, writePorts = 2))) // prefetch flag array
+  val accessArray = coreParams.l1dprefetchRefill.map(_ =>
+    Module(new FlagMetaArray(readPorts = LoadPipelineWidth + 1, writePorts = LoadPipelineWidth + 2)))
   val tagArray = Module(new DuplicatedTagArrayReg(readPorts = LoadPipelineWidth + 1, parentName = outer.parentName + "tagArray_"))
   val mbistPipeline = if(coreParams.hasMbist && coreParams.hasShareBus) {
     Some(Module(new MBISTPipeline(3,s"${outer.parentName}_mbistPipe")))
@@ -548,10 +561,40 @@ class DCacheImp(outer: DCache) extends LazyModuleImp(outer) with HasDCacheParame
     mainPipe.io.error_flag_write,
     refillPipe.io.error_flag_write
   )
-  meta_read_ports.zip(errorArray.io.read).foreach { case (p, r) => r <> p }
   error_flag_resp_ports.zip(errorArray.io.resp).foreach { case (p, r) => p := r }
   error_flag_write_ports.zip(errorArray.io.write).foreach { case (p, w) => w <> p }
 
+  //read extra meta
+  meta_read_ports.zip(errorArray.io.read).foreach { case (p, r) => r <> p }
+
+  coreParams.l1dprefetchRefill.map(_ => {
+    meta_read_ports.zip(prefetchArray.get.io.read).foreach { case (p, r) => r <> p }
+    meta_read_ports.zip(accessArray.get.io.read).foreach { case (p, r) => r <> p }
+    val extra_meta_resp_ports = ldu.map(_.io.extra_meta_resp.get) ++
+      Seq(mainPipe.io.extra_meta_resp.get)
+    extra_meta_resp_ports.zip(prefetchArray.get.io.resp).foreach { case (p, r) => {
+      (0 until nWays).map(i => {
+        p(i).prefetch := r(i)
+      })
+    }}
+    extra_meta_resp_ports.zip(accessArray.get.io.resp).foreach { case (p, r) => {
+      (0 until nWays).map(i => {
+        p(i).access := r(i)
+      })
+    }}
+
+    val prefetch_flag_write_ports = Seq(
+      mainPipe.io.prefetch_flag_write.get, // set prefetch_flag to false if coh is set to Nothing
+      refillPipe.io.prefetch_flag_write.get // refill required by prefetch will set prefetch_flag
+    )
+    prefetch_flag_write_ports.zip(prefetchArray.get.io.write).foreach { case (p, w) => w <> p }
+
+    val access_flag_write_ports = ldu.map(_.io.access_flag_write.get) ++ Seq(
+      mainPipe.io.access_flag_write.get,
+      refillPipe.io.access_flag_write.get
+    )
+    access_flag_write_ports.zip(accessArray.get.io.write).foreach { case (p, w) => w <> p }
+  })
   //----------------------------------------
   // tag array
   require(tagArray.io.read.size == (ldu.size + 1))

@@ -33,6 +33,7 @@ class LoadPipe(id: Int)(implicit p: Parameters) extends DCacheModule with HasPer
     // meta and data array read port
     val meta_read = DecoupledIO(new MetaReadReq)
     val meta_resp = Input(Vec(nWays, new Meta))
+    val extra_meta_resp = coreParams.l1dprefetchRefill.map(_ => Input(Vec(nWays, new DCacheExtraMeta)))
     val error_flag_resp = Input(Vec(nWays, Bool()))
 
     val tag_read = DecoupledIO(new TagReadReq)
@@ -46,6 +47,9 @@ class LoadPipe(id: Int)(implicit p: Parameters) extends DCacheModule with HasPer
     // banked data read conflict
     val bank_conflict_slow = Input(Bool())
     val bank_conflict_fast = Input(Bool())
+
+    // access bit update
+    val access_flag_write = coreParams.l1dprefetchRefill.map(_ => DecoupledIO(new FlagWriteReq))
 
     // send miss request to miss queue
     val miss_req    = DecoupledIO(new MissReq)
@@ -305,7 +309,9 @@ class LoadPipe(id: Int)(implicit p: Parameters) extends DCacheModule with HasPer
 
   val s3_valid = RegNext(s2_valid)
   val s3_paddr = RegEnable(s2_paddr, s2_fire)
+  val s3_vaddr = RegEnable(s2_vaddr, s2_fire)
   val s3_hit = RegEnable(s2_hit, s2_fire)
+  val s3_tag_match_way = RegEnable(s2_tag_match_way, s2_fire)
 
   val s3_data_error = false.B//io.read_error_delayed // banked_data_resp_word.error && !bank_conflict
   val s3_tag_error = false.B//RegEnable(s2_tag_error, s2_fire)
@@ -331,6 +337,13 @@ class LoadPipe(id: Int)(implicit p: Parameters) extends DCacheModule with HasPer
   io.replace_access.valid := RegNext(RegNext(RegNext(io.meta_read.fire()) && s1_valid && !io.lsu.s1_kill) && !s2_nack_no_mshr)
   io.replace_access.bits.set := RegNext(RegNext(get_idx(s1_req.addr)))
   io.replace_access.bits.way := RegNext(RegNext(Mux(s1_tag_match_dup_dc, OHToUInt(s1_tag_match_way_dup_dc), io.replace_way.way)))
+  coreParams.l1dprefetchRefill.map(_ => {
+    // update access bit
+    io.access_flag_write.get.valid := s3_valid && s3_hit
+    io.access_flag_write.get.bits.idx := get_idx(s3_vaddr)
+    io.access_flag_write.get.bits.way_en := s3_tag_match_way
+    io.access_flag_write.get.bits.flag := true.B
+  })
 
   // --------------------------------------------------------------------------------
   // Debug logging functions

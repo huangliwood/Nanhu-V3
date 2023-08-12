@@ -510,6 +510,8 @@ class MemBlockImp(outer: MemBlock) extends BasicExuBlockImp(outer)
         loadUnits(i).io.prefetch_train.valid,
         loadUnits(i).io.prefetch_train.valid && loadUnits(i).io.prefetch_train.bits.miss
       )
+      loadUnits(i).io.prefetch_train.bits.meta_prefetch := DontCare
+      loadUnits(i).io.prefetch_train.bits.meta_access := DontCare
       pf.io.ld_in(i).bits := loadUnits(i).io.prefetch_train.bits
       pf.io.ld_in(i).bits.uop.cf.pc := Mux(loadUnits(i).io.s2IsPointerChasing,
         pcDelay1Bits,
@@ -594,6 +596,8 @@ class MemBlockImp(outer: MemBlock) extends BasicExuBlockImp(outer)
     for((load_unit,i) <- loadUnits.zipWithIndex) {
       load_unit.io.prefetch_req.valid := fuzzer_valid(i)
       load_unit.io.prefetch_req.bits := fuzzer.io.req.bits
+      loadUnits(i).io.prefetch_train.bits.meta_prefetch := DontCare
+      loadUnits(i).io.prefetch_train.bits.meta_access := DontCare
       // load_unit.io.prefetch_req.bits.paddr := 0x080000000L.U(PAddrBits.W)
     }
 

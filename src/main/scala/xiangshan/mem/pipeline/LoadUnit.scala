@@ -573,7 +573,7 @@ class LoadUnit(implicit p: Parameters) extends XSModule with HasLoadHelper with 
     val pmp = Flipped(new PMPRespBundle()) // arrive same to tlb now
 
     // provide prefetch info
-    val prefetch_train = ValidIO(new LsPipelineBundle())
+    val prefetch_train = ValidIO(new LdPrefetchTrainBundle())
     // hardware prefetch to l1 cache req
     val prefetch_req   = Flipped(ValidIO(new L1PrefetchReq))
 
@@ -692,6 +692,10 @@ class LoadUnit(implicit p: Parameters) extends XSModule with HasLoadHelper with 
   io.prefetch_train.bits := load_s2.io.in.bits
   // override miss bit
   io.prefetch_train.bits.miss := io.dcache.resp.bits.miss
+  coreParams.l1dprefetchRefill.map(_ => {
+    io.prefetch_train.bits.meta_prefetch := io.dcache.resp.bits.meta_prefetch.get
+    io.prefetch_train.bits.meta_access := io.dcache.resp.bits.meta_access.get
+  })
   io.prefetch_train.valid := load_s2.io.in.fire && !load_s2.io.out.bits.mmio && !load_s2.io.in.bits.tlbMiss
   io.dcache.s2_kill := load_s2.io.dcache_kill // to kill mmio resp which are redirected
   load_s2.io.dcacheResp <> io.dcache.resp

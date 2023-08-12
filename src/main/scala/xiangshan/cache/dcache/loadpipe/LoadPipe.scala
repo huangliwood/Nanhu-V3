@@ -155,11 +155,15 @@ class LoadPipe(id: Int)(implicit p: Parameters) extends DCacheModule with HasPer
   val s1_hit_coh = s1_hit_meta.coh
   val s1_hit_error = Mux(s1_tag_match_dup_dc, Mux1H(s1_tag_match_way_dup_dc, wayMap((w: Int) => io.error_flag_resp(w))), false.B)
 
+  val s1_hit_prefetch = Mux(s1_tag_match_dup_dc, Mux1H(s1_tag_match_way_dup_dc, wayMap((w: Int) => io.extra_meta_resp(w).prefetch)), false.B)
+  val s1_hit_access = Mux(s1_tag_match_dup_dc, Mux1H(s1_tag_match_way_dup_dc, wayMap((w: Int) => io.extra_meta_resp(w).access)), false.B)
+
   io.replace_way.set.valid := RegNext(s0_fire)
   io.replace_way.set.bits := get_idx(s1_vaddr)
   val s1_repl_way_en = UIntToOH(io.replace_way.way)
   val s1_repl_tag = Mux1H(s1_repl_way_en, wayMap(w => tag_resp(w)))
   val s1_repl_coh = Mux1H(s1_repl_way_en, wayMap(w => meta_resp(w).coh))
+  val s1_repl_extra_meta = Mux1H(s1_repl_way_en, wayMap(w => io.extra_meta_resp(w))) //fixme: not used now
 
   val s1_need_replacement = !s1_tag_match_dup_dc
   val s1_way_en = Mux(s1_need_replacement, s1_repl_way_en, s1_tag_match_way_dup_dc)
@@ -286,6 +290,18 @@ class LoadPipe(id: Int)(implicit p: Parameters) extends DCacheModule with HasPer
   // load pipe need replay when there is a bank conflict
   resp.bits.replay := resp.bits.miss && (!io.miss_req.fire() || s2_nack) || io.bank_conflict_slow
   resp.bits.tag_error := false.B//s2_tag_error // report tag_error in load s2
+
+
+  coreParams.l1dprefetchRefill.map(_ =>{
+    val s2_hit_prefetch = RegEnable(s1_hit_prefetch, s1_fire)
+    val s2_hit_access = RegEnable(s1_hit_access, s1_fire)
+    resp.bits.meta_prefetch.get := s2_hit_prefetch
+    resp.bits.meta_access.get := s2_hit_access
+
+    XSPerfAccumulate("dcache_read_from_prefetched_line", s2_valid && s2_hit_prefetch && !resp.bits.miss)
+    XSPerfAccumulate("dcache_first_read_from_prefetched_line", s2_valid && s2_hit_prefetch && !resp.bits.miss && !s2_hit_access)
+  })
+
 
   XSPerfAccumulate("dcache_read_bank_conflict", io.bank_conflict_slow && s2_valid)
 

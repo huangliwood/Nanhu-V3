@@ -260,7 +260,7 @@ class WithNKBL2
           PrefetchReceiverParams => sms+bop
           HyperPrefetchParams    => spp+bop+sms
         */
-        sppMultiLevelRefill = None,//Some(coupledL2.prefetch.PrefetchReceiverParams()),
+        sppMultiLevelRefill = Some(coupledL2.prefetch.PrefetchReceiverParams()),
         /*must has spp, otherwise Assert Fail
         sppMultiLevelRefill options:
         PrefetchReceiverParams() => spp has cross level refill
@@ -279,6 +279,34 @@ class WithNKBL2
     ))
 })
 
+// class WithNKBL3(n: Int, ways: Int = 8, inclusive: Boolean = true, banks: Int = 1, core_num: Int = 1) extends Config((site, here, up) => {
+//   case SoCParamsKey =>
+//     val sets = n * 1024 / banks / ways / 64
+//     val tiles = site(XSTileKey)
+//     val clientDirBytes = tiles.map{ t =>
+//       t.L2NBanks * t.L2CacheParamsOpt.map(_.toCacheParams.capacity).getOrElse(0)
+//     }.sum
+//     up(SoCParamsKey).copy(
+//       L3NBanks = banks,
+//       L3CacheParamsOpt = Some(L3Param(
+//         name = "L3",
+//         ways = ways,
+//         sets = sets,
+//         inclusionPolicy = "NINE",
+//         clientCaches = tiles.map{ core =>
+//           val l2params = core.L2CacheParamsOpt.get.toCacheParams
+//           l2params.copy(
+//             sets = l2params.sets,
+//             ways = (l2params.ways + 1) * core_num,
+//             blockGranularity = log2Ceil(clientDirBytes / core.L2NBanks / l2params.ways / 64 / tiles.size)
+//           )
+//         },
+//         enablePerf = false
+//       ))
+//     )
+// })
+
+
 class WithNKBL3(n: Int, ways: Int = 8, inclusive: Boolean = true, banks: Int = 1, core_num: Int = 1) extends Config((site, here, up) => {
   case SoCParamsKey =>
     val sets = n * 1024 / banks / ways / 64
@@ -288,23 +316,30 @@ class WithNKBL3(n: Int, ways: Int = 8, inclusive: Boolean = true, banks: Int = 1
     }.sum
     up(SoCParamsKey).copy(
       L3NBanks = banks,
-      L3CacheParamsOpt = Some(L3Param(
+      L3CacheParamsOpt = Some(HCCacheParameters(
         name = "L3",
+        level = 3,
         ways = ways,
         sets = sets,
-        inclusionPolicy = "NINE",
+        inclusive = inclusive,
         clientCaches = tiles.map{ core =>
           val l2params = core.L2CacheParamsOpt.get.toCacheParams
-          l2params.copy(
-            sets = l2params.sets,
-            ways = (l2params.ways + 1) * core_num,
-            blockGranularity = log2Ceil(clientDirBytes / core.L2NBanks / l2params.ways / 64 / tiles.size)
-          )
+          l2params.copy(sets = 2 * clientDirBytes / core.L2NBanks / l2params.ways / 64, ways = l2params.ways + 2)
         },
-        enablePerf = false
+        prefetch = None,
+        prefetchRecv = Some(huancun.prefetch.PrefetchReceiverParams()),
+        enablePerf = true,
+        ctrl = None,
+        reqField = Seq(utility.ReqSourceField()),
+        sramClkDivBy2 = true,
+        sramDepthDiv = 4,
+        tagECC = Some("secded"),
+        dataECC = Some("secded"),
+        simulation = !site(DebugOptionsKey).FPGAPlatform
       ))
     )
 })
+
 
 class WithL3DebugConfig extends Config(
   new WithNKBL3(256, inclusive = false) ++ new WithNKBL2(64)

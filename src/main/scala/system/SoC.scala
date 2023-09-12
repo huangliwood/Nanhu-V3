@@ -35,13 +35,32 @@ import coupledL3._
 
 case object SoCParamsKey extends Field[SoCParameters]
 
+// case class SoCParameters
+// (
+//   EnableILA: Boolean = false,
+//   PAddrBits: Int = 36,
+//   extIntrs: Int = 64,
+//   L3NBanks: Int = 4,
+//   L3CacheParamsOpt: Option[L3Param] = Some(L3Param(
+//     name = "l3",
+//     ways = 8,
+//     sets = 2048 // 1MB per bank
+//   ))
+// ){
+//   // L3 configurations
+//   val L3InnerBusWidth = 256
+//   val L3BlockSize = 64
+//   // on chip network configurations
+//   val L3OuterBusWidth = 256
+// }
+
 case class SoCParameters
 (
   EnableILA: Boolean = false,
   PAddrBits: Int = 36,
   extIntrs: Int = 64,
   L3NBanks: Int = 4,
-  L3CacheParamsOpt: Option[L3Param] = Some(L3Param(
+  L3CacheParamsOpt: Option[HCCacheParameters] = Some(HCCacheParameters(
     name = "l3",
     ways = 8,
     sets = 2048 // 1MB per bank

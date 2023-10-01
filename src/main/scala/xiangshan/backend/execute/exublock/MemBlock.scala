@@ -34,7 +34,7 @@ import xiangshan.backend.rob.RobLsqIO
 import xiangshan.cache._
 import xiangshan.cache.mmu.{BTlbPtwIO, TLB, TlbIO, TlbReplace}
 import xiangshan.mem._
-import xiangshan.mem.prefetch.{BasePrefecher, SMSParams, SMSPrefetcher}
+import xiangshan.mem.prefetch.{BasePrefecher, PrefetchQueue, SMSParams, SMSPrefetcher,HyperPrefetcher,HyperPrefetchParams,PrefetchReq}
 import xs.utils.mbist.MBISTPipeline
 import xs.utils.perf.HasPerfLogging
 import xs.utils.{DelayN, ParallelPriorityMux, RegNextN, ValidIODelay}
@@ -182,11 +182,9 @@ class MemBlock(val parentName:String = "Unknown")(implicit p: Parameters) extend
 
   val dcache = LazyModule(new DCacheWrapper(parentName = parentName + "dcache_"))
   val uncache = LazyModule(new Uncache())
-  val pf_sender_opt = coreParams.prefetcher match  {
-    case Some(receive : SMSParams) => Some(BundleBridgeSource(() => new PrefetchRecv))
-    // case sms_sender_hyper : HyperPrefetchParams => Some(BundleBridgeSource(() => new PrefetchRecv))
-    case _ => None
-  }
+  val pf_sender_opt = coreParams.prefetcher.map(_ =>
+    BundleBridgeSource(() => new PrefetchRecv)
+  )
 
   lazy val module = new MemBlockImp(this)
 
@@ -294,36 +292,42 @@ class MemBlockImp(outer: MemBlock) extends BasicExuBlockImp(outer)
   private val stdUnits = Seq.fill(exuParameters.StuCnt)(Module(new Std))
   private val stData = stdUnits.map(_.io.out)
   val prefetcherOpt: Option[BasePrefecher] = coreParams.prefetcher match {
-    case Some(sms_sender: SMSParams) =>
+    case Some(x: SMSParams) =>
       val sms = Module(new SMSPrefetcher(parentName = outer.parentName + "sms_"))
       sms.io_agt_en := RegNextN(io.csrCtrl.l1D_pf_enable_agt, 2, Some(false.B))
       sms.io_pht_en := RegNextN(io.csrCtrl.l1D_pf_enable_pht, 2, Some(false.B))
       sms.io_act_threshold := RegNextN(io.csrCtrl.l1D_pf_active_threshold, 2, Some(12.U))
       sms.io_act_stride := RegNextN(io.csrCtrl.l1D_pf_active_stride, 2, Some(30.U))
       sms.io_stride_en := RegNextN(io.csrCtrl.l1D_pf_enable_stride, 2, Some(true.B))
-      Some(sms)
-    // case Some(sms_sender_hyper : HyperPrefetchParams) =>
-    //   val sms = Module(new SMSPrefetcher(parentName = outer.parentName + "sms_"))
-    //   sms.io_agt_en := RegNextN(io.csrCtrl.l1D_pf_enable_agt, 2, Some(false.B))
-    //   sms.io_pht_en := RegNextN(io.csrCtrl.l1D_pf_enable_pht, 2, Some(false.B))
-    //   sms.io_act_threshold := RegNextN(io.csrCtrl.l1D_pf_active_threshold, 2, Some(12.U))
-    //   sms.io_act_stride := RegNextN(io.csrCtrl.l1D_pf_active_stride, 2, Some(30.U))
-    //   sms.io_stride_en := RegNextN(io.csrCtrl.l1D_pf_enable_stride, 2, Some(true.B))
-    //   Some(sms)
-    case _ => None
-  }
-  prefetcherOpt match {
-    case Some(sms) => // memblock can only have sms or not
-      outer.pf_sender_opt match{
+
+      outer.pf_sender_opt match {
         case Some(sender) =>
-        val pf_to_l2 = Pipe(sms.io.pf_addr, 2)
-        sender.out.head._1.addr_valid := pf_to_l2.valid
-        sender.out.head._1.addr := pf_to_l2.bits
-        sender.out.head._1.l2_pf_en := RegNextN(io.csrCtrl.l2_pf_enable, 2, Some(true.B))
-        sms.io.enable := RegNextN(io.csrCtrl.l1D_pf_enable, 2, Some(false.B))
+          val pf_to_l2 = Pipe(sms.io.pf_addr, 2)
+          sender.out.head._1.addr_valid := pf_to_l2.valid
+          sender.out.head._1.addr := pf_to_l2.bits
+          sender.out.head._1.l2_pf_en := RegNextN(io.csrCtrl.l2_pf_enable, 2, Some(true.B))
+          sms.io.enable := RegNextN(io.csrCtrl.l1D_pf_enable, 2, Some(false.B))
         case None => assert(cond = false, "Maybe from Config fault: Open SMS but dont have sms sender&recevier")
       }
-    case None =>
+      Some(sms)
+     case Some(x : HyperPrefetchParams) =>
+       val hyper = Module(new HyperPrefetcher(parentName = outer.parentName))
+       hyper.sms_ctrl.io_agt_en := RegNextN(io.csrCtrl.l1D_pf_enable_agt, 2, Some(false.B))
+       hyper.sms_ctrl.io_pht_en := RegNextN(io.csrCtrl.l1D_pf_enable_pht, 2, Some(false.B))
+       hyper.sms_ctrl.io_act_threshold := RegNextN(io.csrCtrl.l1D_pf_active_threshold, 2, Some(12.U))
+       hyper.sms_ctrl.io_act_stride := RegNextN(io.csrCtrl.l1D_pf_active_stride, 2, Some(30.U))
+       hyper.sms_ctrl.io_stride_en := RegNextN(io.csrCtrl.l1D_pf_enable_stride, 2, Some(true.B))
+       hyper.io.enable := RegNextN(io.csrCtrl.l1D_pf_enable, 2, Some(false.B))
+       outer.pf_sender_opt match {
+         case Some(sender) =>
+         sender.out.head._1.addr_valid := hyper.io.pf_addr.valid
+         sender.out.head._1.addr := hyper.io.pf_addr.bits
+         sender.out.head._1.l2_pf_en := RegNextN(io.csrCtrl.l2_pf_enable, 2, Some(true.B))
+         case None => assert(cond = false, "Maybe from Config fault: Open SMS but dont have sms sender&recevier")
+       }
+       println("core: hyperPrefetch sms+spp")
+       Some(hyper)
+    case _ => None
   }
   private val pf_train_on_hit = RegNextN(io.csrCtrl.l1D_pf_train_on_hit, 2, Some(true.B))
 

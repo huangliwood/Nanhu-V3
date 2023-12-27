@@ -406,7 +406,7 @@ class CSR(implicit p: Parameters) extends FUWithRedirect
     // 4.spfctl[33:18] == [0x0004-0x1111] -> resevered
   // turn off L2 BOP, turn on L1 SMS by default
   val spfctl = RegInit(UInt(XLEN.W), Seq(
-    0 << 18,    // L2 hybridPf default config init: 0
+    0x5e7 << 18,    // L2 hybridPf default config init: 0
     0 << 17,    // L2 pf store only [17] init: false
     1 << 16,    // L1D pf enable stride [16] init: true
     30 << 10,   // L1D active page stride [15:10] init: 30

@@ -399,14 +399,16 @@ class CSR(implicit p: Parameters) extends FUWithRedirect
   // spfctl Bit [15:10]: L1D prefetch active page stride
   // spfctl Bit 17: L2 pf store only [17] init: false
   // spfctl Bit [33:18]: L2 Cache hybrid Prefetch Config
-    // 0.spfctl[33:18] == 00 -> smsPf - bopPf - extensivePf
-    // 1.spfctl[33:18] == 01 -> smsPf - bopPf
-    // 2.spfctl[33:18] == 02 -> smsPf - extensivePf
-    // 3.spfctl[33:18] == 03 -> bopPf - extensivePf
-    // 4.spfctl[33:18] == [0x0004-0x1111] -> resevered
+    // 0.spfctl[20:18] == 'b111 -> smsPf - bopPf - extensivePf
+    // 1.spfctl[20:18] == 'b011 -> smsPf - bopPf
+    // 2.spfctl[20:18] == 'b101 -> smsPf - extensivePf
+    // 3.spfctl[20:18] == 'b001 -> smsPf
+    // 4.spfctl[20:18] == 'b010 -> bopPf
+    // 5.spfctl[20:18] == 'b100 -> extensivePf
+    // 6.spfctl[33:21] == [0x0004-0x1111] -> resevered
   // turn off L2 BOP, turn on L1 SMS by default
   val spfctl = RegInit(UInt(XLEN.W), Seq(
-    0x5e7 << 18,    // L2 hybridPf default config init: 0
+    0x5e7 << 18,    // L2 hybridPf default config init: 0x5e7
     0 << 17,    // L2 pf store only [17] init: false
     1 << 16,    // L1D pf enable stride [16] init: true
     30 << 10,   // L1D active page stride [15:10] init: 30

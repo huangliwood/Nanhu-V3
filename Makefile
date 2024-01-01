@@ -17,7 +17,7 @@
 TOP = $(PREFIX)XSTop
 SIM_TOP   = $(PREFIX)SimTop
 FPGATOP = top.TopMain
-BUILD_DIR ?= ./build
+BUILD_DIR ?= build
 
 TOP_V = $(BUILD_DIR)/$(TOP).sv
 SIM_TOP_V = $(BUILD_DIR)/$(SIM_TOP).sv
@@ -33,7 +33,7 @@ NUM_CORES ?= 1
 ABS_WORK_DIR := $(shell pwd)
 # VCS sim options
 RUN_BIN_DIR ?= $(ABS_WORK_DIR)/ready-to-run
-RUN_BIN ?= coremark-2-iteration
+RUN_BIN ?= microbench.bin
 CONSIDER_FSDB ?= 1
 
 ifdef FLASH
@@ -85,8 +85,8 @@ help:
 $(TOP_V): $(SCALA_FILE)
 	mkdir -p $(@D)
 	time -o $(@D)/time.log mill -i XiangShan.runMain $(FPGATOP) -td $(@D) \
-		--config $(CONFIG) --full-stacktrace --num-cores $(NUM_CORES) \
-		$(RELEASE_ARGS) --target systemverilog | tee build/make.log
+		--config $(CONFIG) --full-stacktrace --num-cores $(NUM_CORES) --build $(BUILD_DIR)\
+		$(RELEASE_ARGS) --target systemverilog | tee $(BUILD_DIR)/make.log
 ifeq ($(VCS), 1)
 	@sed -i $$'s/$$fatal/assert(1\'b0)/g' $@
 else
@@ -101,20 +101,17 @@ endif
 	-e 's/\(dma\)_0_\(aw\|ar\|w\|r\|b\)_bits_/s_\1_\2_/g' $@
 	@sed -i -e 's/\(peripheral\|memory\)_0_\(aw\|ar\|w\|r\|b\)_/m_\1_\2_/g' \
 	-e 's/\(dma\)_0_\(aw\|ar\|w\|r\|b\)_\(ready\|valid\)/s_\1_\2_\3/g' $@
-	@sed -i -e '/^  .*DummyDPICWrapper/i\`ifndef SYNTHESIS' \
-	-e '/^  .*DummyDPICWrapper/{:a N; /;/!ba s/;/;\n`endif/ };' $@
-	@sed -i -e '/^  .*Delayer/i\`ifndef SYNTHESIS' \
-	-e '/^  .*Delayer/{:a N; /;/!ba s/;/;\n`endif/ };' $@
 
-verilog: $(TOP_V)
-
+verilog: 
+	$(MAKE) $(TOP_V) CONFIG=DefaultConfig_toBackend
+SED_CMD = sed -i -e 's/_\(aw\|ar\|w\|r\|b\)_\(\|bits_\)/_\1/g'
 $(SIM_TOP_V): $(SCALA_FILE) $(TEST_FILE)
 	mkdir -p $(@D)
 	@echo "\n[mill] Generating Verilog files..." > $(@D)/time.log
 	@date -R | tee -a $(@D)/time.log
 	time -o $(@D)/time.log mill -i XiangShan.test.runMain $(SIMTOP) -td $(@D) \
-		--config $(CONFIG) --full-stacktrace --num-cores $(NUM_CORES) \
-		$(SIM_ARGS) --target systemverilog | tee build/make.log
+		--config $(CONFIG) --full-stacktrace --num-cores $(NUM_CORES) --build $(BUILD_DIR)\
+		$(SIM_ARGS) --target systemverilog | tee $(BUILD_DIR)/make.log
 ifeq ($(VCS), 1)
 	@sed -i $$'s/$$fatal/assert(1\'b0)/g' $@
 else
@@ -129,16 +126,25 @@ endif
 	-e 's/\(dma\)_0_\(aw\|ar\|w\|r\|b\)_bits_/s_\1_\2_/g' $@
 	@sed -i -e 's/\(peripheral\|memory\)_0_\(aw\|ar\|w\|r\|b\)_/m_\1_\2_/g' \
 	-e 's/\(dma\)_0_\(aw\|ar\|w\|r\|b\)_\(ready\|valid\)/s_\1_\2_\3/g' $@
-	@sed -i -e '/^  .*DummyDPICWrapper/i\`ifndef SYNTHESIS' \
-	-e '/^  .*DummyDPICWrapper/{:a N; /;/!ba s/;/;\n`endif/ };' $@
-	@sed -i -e '/^  .*Delayer/i\`ifndef SYNTHESIS' \
-	-e '/^  .*Delayer/{:a N; /;/!ba s/;/;\n`endif/ };' $@
+	$(SED_CMD) $@
+	@git log -n 1 >> .__head__
+	@git diff >> .__diff__
+	@sed -i 's/^/\/\// ' .__head__
+	@sed -i 's/^/\/\//' .__diff__
+	@cat .__head__ .__diff__ $@ > .__out__
+	@mv .__out__ $@
+	@rm .__head__ .__diff__
 
-FILELIST := $(ABS_WORK_DIR)/build/cpu_flist.f
+FILELIST := $(BUILD_DIR)/cpu_flist.f
 
 sim-verilog: $(SIM_TOP_V)
-	find $(ABS_WORK_DIR)/build -name "*.v" > $(FILELIST)
-	find $(ABS_WORK_DIR)/build -name "*.sv" >> $(FILELIST)
+ifeq ($(VCS), 1)
+	find $(ABS_WORK_DIR)/$(BUILD_DIR) -name "*.v" > $(FILELIST)
+	find $(ABS_WORK_DIR)/$(BUILD_DIR) -name "*.sv" >> $(FILELIST)
+else
+	find $(BUILD_DIR) -name "*.v" > $(FILELIST)
+	find $(BUILD_DIR) -name "*.sv" >> $(FILELIST)
+endif
 
 clean:
 	$(MAKE) -C ./difftest clean
@@ -185,6 +191,7 @@ emu_rtl-run:
 # vcs simulation
 simv:
 	$(MAKE) -C ./difftest simv SIM_TOP=SimTop DESIGN_DIR=$(NOOP_HOME) NUM_CORES=$(NUM_CORES) CONSIDER_FSDB=$(CONSIDER_FSDB) VCS=1 REF=Spike
+	$(MAKE) simv-run
 
 simv-run:
 	$(shell if [ ! -e $(ABS_WORK_DIR)/sim/rtl/$(RUN_BIN) ];then mkdir -p $(ABS_WORK_DIR)/sim/rtl/$(RUN_BIN); fi)

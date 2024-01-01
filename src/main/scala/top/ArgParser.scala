@@ -38,6 +38,7 @@ object ArgParser {
       |--enable-log
       |--disable-perf
       |--prefix
+      |--build
       |""".stripMargin
 
   def getConfigByName(confString: String): Parameters = {
@@ -94,6 +95,10 @@ object ArgParser {
         case "--prefix" :: confString :: tail =>
           nextOption(config.alter((site, here, up) => {
             case PrefixKey => confString
+          }), tail)
+        case "--build" :: confString :: tail =>
+          nextOption(config.alter((site, here, up) => {
+            case BuildKey => confString
           }), tail)
         case option :: tail =>
           // unknown option, maybe a firrtl option, skip

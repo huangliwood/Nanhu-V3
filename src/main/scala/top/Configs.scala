@@ -38,6 +38,7 @@ import xiangshan.mem.prefetch.SMSParams
 import darecreek.exu.vfu._
 import xs.utils.perf.DebugOptionsKey
 case object PrefixKey extends Field[String]
+case object BuildKey extends Field[String]
 class BaseConfig(n: Int, mbist:Boolean = false) extends Config((site, here, up) => {
   case XLen => 64
   case DebugOptionsKey => DebugOptions()
@@ -55,7 +56,8 @@ class BaseConfig(n: Int, mbist:Boolean = false) extends Config((site, here, up) 
   case MaxHartIdBits => 2
   case EnableJtag => true.B
   case PrefixKey => ""
-
+  case BuildKey => "build"
+  
   case VFuParamsKey => VFuParameters()
   case AXI2TLParamKey => AXI2TLParam()
 })
@@ -255,10 +257,11 @@ class WithNKBL2
         reqField = Seq(xs.utils.tl.ReqSourceField()),
         echoField = Seq(coupledL2.DirtyField()),
         elaboratedTopDown = false,
-        enablePerf = false,
+        enablePerf = true,
         hasMbist = p.hasMbist,
         hasShareBus = p.hasShareBus,
         prefetch = Some(coupledL2.prefetch.HyperPrefetchParams()),
+        // prefetch = Some(coupledL2.prefetch.HyperPrefetchParams()),
         /*
         del L2 prefetche recv option, move into: prefetch =  PrefetchReceiverParams
         prefetch options:
@@ -347,6 +350,13 @@ class DefaultConfig(n: Int = 1) extends Config(
   new WithNKBL3(4 * 1024, inclusive = false, banks = 4, ways = 8, core_num = n)
     ++ new WithNKBL2(256, inclusive = false, banks = 2, ways = 8, alwaysReleaseData = true)
     ++ new WithNKBL1D(64)
-    ++ new BaseConfig(n)
+    ++ new BaseConfig(n,mbist=false)
+)
+
+class DefaultConfig_toBackend(n: Int = 1) extends Config(
+  new WithNKBL3(4 * 1024, inclusive = false, banks = 4, ways = 8, core_num = n)
+    ++ new WithNKBL2(256, inclusive = false, banks = 2, ways = 8, alwaysReleaseData = true)
+    ++ new WithNKBL1D(64)
+    ++ new BaseConfig(n,mbist=true)
 )
 

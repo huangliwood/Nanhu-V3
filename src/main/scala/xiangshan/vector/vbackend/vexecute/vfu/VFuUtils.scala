@@ -63,7 +63,7 @@ object MaskExtract {
 }
 
 object MaskExtractRed {
-  def apply(vmask128b: UInt, uopIdx: UInt, sew: SewOH, vs2: UInt) = {
+  def apply(vmask128b: UInt, uopIdx: UInt, sew: SewOH, vs2: UInt, fpu_red_cmp: Bool) = {
     val extracted = Wire(UInt(16.W))
     val extracted_nan = Wire(UInt(16.W))
     extracted := Mux1H(Seq.tabulate(8)(uopIdx === _.U),
@@ -78,12 +78,12 @@ object MaskExtractRed {
 
     for (i <- 0 until 4) {
       vs2_ele32(i) := vs2((i + 1) * 32 - 1, i * 32)
-      vs2_ele32_nan(i) := FloatPoint.fromUInt(vs2_ele32(i), VFPU.f32.expWidth, VFPU.f32.precision).decode.isNaN.asUInt
+      vs2_ele32_nan(i) := FloatPoint.fromUInt(vs2_ele32(i), VFPU.f32.expWidth, VFPU.f32.precision).decode.isNaN.asUInt & fpu_red_cmp.asUInt
     }
 
     for (i <- 0 until 2) {
       vs2_ele64(i) := vs2((i + 1) * 64 - 1, i * 64)
-      vs2_ele64_nan(i) := FloatPoint.fromUInt(vs2_ele64(i), VFPU.f64.expWidth, VFPU.f64.precision).decode.isNaN.asUInt
+      vs2_ele64_nan(i) := FloatPoint.fromUInt(vs2_ele64(i), VFPU.f64.expWidth, VFPU.f64.precision).decode.isNaN.asUInt & fpu_red_cmp.asUInt
     }
 
     vs2_ele_mask := Mux(sew.is32, Cat(0.U(12.W), Cat(vs2_ele32_nan.reverse)), Cat(0.U(14.W), Cat(vs2_ele64_nan.reverse)))

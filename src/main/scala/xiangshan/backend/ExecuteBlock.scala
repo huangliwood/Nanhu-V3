@@ -43,7 +43,7 @@ import xiangshan.vector.HasVectorParameters
 import xiangshan.vector.vbackend.vexecute.{VectorBlock, VectorPermutationBlock}
 import xiangshan.vector.vbackend.vissue.vrs.VectorReservationStation
 import xiangshan.vector.vbackend.vregfile.VRegfileTop
-import xs.utils.{DFTResetSignals, ModuleNode, ResetGen, ResetGenNode}
+import xs.utils.{DFTResetSignals, ModuleNode, RegNextN, ResetGen, ResetGenNode}
 import xiangshan.mem._
 class ExecuteBlock(val parentName:String = "Unknown")(implicit p:Parameters) extends LazyModule with HasXSParameter with HasVectorParameters {
   val integerReservationStation: IntegerReservationStation = LazyModule(new IntegerReservationStation)
@@ -211,13 +211,13 @@ class ExecuteBlockImp(outer:ExecuteBlock) extends LazyModuleImp(outer)
   vpBlk.io.intAllocPregs := io.integerAllocPregs
   vpBlk.io.fpAllocPregs := io.floatingAllocPregs
   vpBlk.io.vecAllocPregs := io.vectorAllocPregs
-  vpBlk.io.frm := intBlk.io.csrio.fpu.frm
-  vpBlk.io.vstart := intBlk.io.csrio.vcsr.vstart
-  vpBlk.io.vcsr := io.csrio.vcsr.vcsr
+  vpBlk.io.frm := RegNextN(intBlk.io.csrio.fpu.frm, 2)
+  vpBlk.io.vstart := RegNextN(intBlk.io.csrio.vcsr.vstart, 2)
+  vpBlk.io.vcsr := RegNextN(io.csrio.vcsr.vcsr, 2)
 
-  vecBlk.io.frm := intBlk.io.csrio.fpu.frm
-  vecBlk.io.vstart := intBlk.io.csrio.vcsr.vstart
-  vecBlk.io.vcsr := io.csrio.vcsr.vcsr
+  vecBlk.io.frm := RegNextN(intBlk.io.csrio.fpu.frm, 2)
+  vecBlk.io.vstart := RegNextN(intBlk.io.csrio.vcsr.vstart, 2)
+  vecBlk.io.vcsr := RegNextN(io.csrio.vcsr.vcsr, 2)
 
   io.memBlk_csrUpdate := memBlk.io.csrUpdate
   memBlk.io.csrCtrl <> intBlk.io.csrio.customCtrl

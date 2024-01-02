@@ -49,7 +49,7 @@ class VMacExu(id:Int, complexName:String)(implicit p: Parameters) extends BasicE
     private val uopIdx = uopShiftQueue.io.out.bits.uopIdx
     private val uopNum = uopShiftQueue.io.out.bits.uopNum
     private val uopOut = uopShiftQueue.io.out.bits
-    private val isNarrow = uopOut.vctrl.isNarrow
+    private val isNarrow = uopOut.vctrl.isNarrow && !uopOut.vctrl.maskOp
     private val lowHalf = !uopIdx(0)
     private val highHalf = uopIdx(0)
     private val maskLen = VLEN / 8

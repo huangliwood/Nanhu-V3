@@ -819,8 +819,9 @@ class CSR(implicit p: Parameters) extends FUWithRedirect
   val triggerPermitted = triggerPermissionCheck(addr, true.B, debugMode) // todo dmode
   val modePermitted = csrAccessPermissionCheck(addr, false.B, priviledgeMode) && dcsrPermitted && triggerPermitted
   val perfcntPermitted = perfcntPermissionCheck(addr, priviledgeMode, mcounteren, scounteren)
-  val vcsrPermitted = vcsrAccessPermissionCheck(addr, wen)
-  val permitted = Mux(addrInPerfCnt, perfcntPermitted, modePermitted) && accessPermitted && vcsrPermitted
+  val vcsrPermitted = vcsrAccessPermissionCheck(addr, wen, mstatusStruct.vs)
+  val fcsrPermitted = fcsrAccessPermissionCheck(addr, wen, mstatusStruct.fs)
+  val permitted = Mux(addrInPerfCnt, perfcntPermitted, modePermitted) && accessPermitted && vcsrPermitted && fcsrPermitted
   vtypeNoException := vcsrPermitted
 
   MaskedRegMap.generate(mapping, addr, rdata, wen && permitted, wdata)
@@ -856,8 +857,8 @@ class CSR(implicit p: Parameters) extends FUWithRedirect
     fcsr := fflags_wfn(update = true)(RegNext(csrio.fpu.fflags.bits))
   }
   // set fs and sd in mstatus
-  private val fsUpdate = csrw_dirty_fp_state || RegNext(csrio.fpu.dirty_fs) && !ignoreWrite
-  private val vsUpdate = csrw_dirty_vec_state || RegNext(csrio.vcsr.robWb.dirty_vs) || RegNext(csrio.vcsr.robWb.vstart.valid) && !ignoreWrite
+  private val fsUpdate = (csrw_dirty_fp_state || RegNext(csrio.fpu.dirty_fs) && !ignoreWrite) && mstatusStruct.fs =/= 0.U
+  private val vsUpdate = (csrw_dirty_vec_state || RegNext(csrio.vcsr.robWb.dirty_vs) || RegNext(csrio.vcsr.robWb.vstart.valid) && !ignoreWrite) && mstatusStruct.vs =/= 0.U
   when (vsUpdate || fsUpdate) {
     val mstatusNew = WireInit(mstatus.asTypeOf(new MstatusStruct))
     when(fsUpdate){
@@ -943,11 +944,13 @@ class CSR(implicit p: Parameters) extends FUWithRedirect
   // Branch control
   val retTarget = WireInit(0.U)
   val resetSatp = addr === Satp.U && wen // write to satp will cause the pipeline be flushed
-  val w_fcsr_change_rm = wen && addr === Fcsr.U && wdata(7, 5) =/= fcsr(7, 5)
-  val w_frm_change_rm = wen && addr === Frm.U && wdata(2, 0) =/= fcsr(7, 5)
-  val frm_change = w_fcsr_change_rm || w_frm_change_rm
+  val wFcsrChangeRm = wen && addr === Fcsr.U && wdata(7, 5) =/= fcsr(7, 5)
+  val wFrmChangeRm = wen && addr === Frm.U && wdata(2, 0) =/= fcsr(7, 5)
+  val frmChange = wFcsrChangeRm || wFrmChangeRm
+  val vsChange = wen && wdata(10, 9) =/= mstatus(10, 9) && (addr === Mstatus.U || addr === Sstatus.U)
+  val fsChange = wen && wdata(14, 13) =/= mstatus(14, 13) && (addr === Mstatus.U || addr === Sstatus.U)
   val isXRet = valid && func === CSROpType.jmp && !isEcall && !isEbreak
-  flushPipe := resetSatp || frm_change || isXRet || frontendTriggerUpdate || vsUpdate || fsUpdate
+  flushPipe := resetSatp || frmChange || isXRet || frontendTriggerUpdate || vsChange || fsChange
 
   private val illegalRetTarget = WireInit(false.B)
 

@@ -52,6 +52,7 @@ class VRob(implicit p: Parameters) extends VectorBaseModule with HasCircularQueu
       val rob = Flipped(new RobCommitIO)
       val rat = Output(new VIRatCommitPort)
     }
+    val exception = Input(Valid(new ExceptionInfo))
     val redirect = Flipped(ValidIO(new Redirect))
   })
 
@@ -112,9 +113,9 @@ class VRob(implicit p: Parameters) extends VectorBaseModule with HasCircularQueu
       wptr := (enqPtr - (i+1).U).value
     }
   }
-
-  val commitValid = io.commit.rob.isCommit && io.commit.rob.commitValid.asUInt.orR
-  val commitRobIdx = Mux1H(io.commit.rob.commitValid, io.commit.rob.robIdx)
+  val exceptionCmtValid = io.exception.valid && io.exception.bits.uop.vctrl.isLs && !ExceptionNO.selectFrontend(io.exception.bits.uop.cf.exceptionVec).reduce(_ | _)
+  val commitValid = io.commit.rob.isCommit && io.commit.rob.commitValid.asUInt.orR || exceptionCmtValid
+  val commitRobIdx = Mux(exceptionCmtValid, io.exception.bits.uop.robIdx, Mux1H(io.commit.rob.commitValid, io.commit.rob.robIdx))
   when(commitValid) {
     assert(PopCount(io.commit.rob.commitValid) <= 1.U, "Only one v inst should be walked or committed")
   }

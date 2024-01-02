@@ -51,7 +51,7 @@ class VectorCtrlBlock(vecDpWidth: Int, vpDpWidth: Int, memDpWidth: Int)(implicit
     //from ctrl rename
     val fromVtpRn = Input(Vec(RenameWidth, new VtpToVCtl))
     //from ctrl rob
-    val robEnq = Vec(VIDecodeWidth, Flipped(ValidIO(new RobPtr))) //to wait queue
+    val dispatchIn = Vec(VIDecodeWidth, Input(new DispatchInfo))
     val vtypewriteback = Flipped(ValidIO(new VtypeWbIO)) //to wait queue
     val vmbAlloc = Flipped(new VmbAlloc)
     val commit = Flipped(new RobCommitIO) // to rename
@@ -65,6 +65,9 @@ class VectorCtrlBlock(vecDpWidth: Int, vpDpWidth: Int, memDpWidth: Int)(implicit
 
     val vmbInit = Output(Valid(new MicroOp))
     val vAllocPregs = Vec(VIRenameWidth, ValidIO(UInt(VIPhyRegIdxWidth.W)))
+
+    val splitCtrl = new SplitCtrlIO
+    val exception = Input(Valid(new ExceptionInfo))
 
     val debug = Output(Vec(32, UInt(VIPhyRegIdxWidth.W)))
   })
@@ -85,8 +88,9 @@ class VectorCtrlBlock(vecDpWidth: Int, vpDpWidth: Int, memDpWidth: Int)(implicit
 
   vdecode.io.canOut := waitqueue.io.enq.canAccept
   for (i <- 0 until VIDecodeWidth) {
-    waitqueue.io.enq.needAlloc(i) := vdecode.io.out(i).valid && vdecode.io.out(i).bits.ctrl.isVector && !redirectDelay_dup_0.valid
-    waitqueue.io.enq.req(i).valid := vdecode.io.out(i).valid && vdecode.io.out(i).bits.ctrl.isVector && io.allowIn && !redirectDelay_dup_0.valid
+    val tryToEnq = vdecode.io.out(i).valid && vdecode.io.out(i).bits.ctrl.isVector && !redirectDelay_dup_0.valid && !ExceptionNO.selectFrontend(vdecode.io.out(i).bits.cf.exceptionVec).reduce(_ | _)
+    waitqueue.io.enq.needAlloc(i) := tryToEnq
+    waitqueue.io.enq.req(i).valid := tryToEnq && io.allowIn
     waitqueue.io.enq.req(i).bits.uop := vdecode.io.out(i).bits
     waitqueue.io.enq.req(i).bits.uop.pdest := io.fromVtpRn(i).pdest
     waitqueue.io.enq.req(i).bits.uop.psrc := io.fromVtpRn(i).psrc
@@ -97,12 +101,13 @@ class VectorCtrlBlock(vecDpWidth: Int, vpDpWidth: Int, memDpWidth: Int)(implicit
     waitqueue.io.enq.req(i).bits.uop.vtypeRegIdx := io.fromVtpRn(i).vtypeIdx
   }
 
-  waitqueue.io.vstart         := io.vstart
+  waitqueue.io.vstart         := RegNext(io.vstart)
   waitqueue.io.vtypeWbData    := io.vtypewriteback
-  waitqueue.io.robin          := io.robEnq
+  waitqueue.io.dispatchIn     := io.dispatchIn
   waitqueue.io.vmbAlloc       <> io.vmbAlloc
   waitqueue.io.canRename      := VecInit(virename.io.rename.map(_.in.ready)).asUInt.orR
   waitqueue.io.redirect       := redirectDelay_dup_1
+  waitqueue.io.splitCtrl      := io.splitCtrl
 
   virename.io.redirect    := redirectDelay_dup_2
   //virename.io.uopIn       <> waitqueue.io.out
@@ -110,6 +115,7 @@ class VectorCtrlBlock(vecDpWidth: Int, vpDpWidth: Int, memDpWidth: Int)(implicit
     vrI <> wqO
   }
   virename.io.commit      <> io.commit
+  virename.io.exception := io.exception
 
   for((rp, dp) <- virename.io.rename.map(_.out) zip dispatch.io.req.uop) {
     rp.ready := dispatch.io.req.canDispatch

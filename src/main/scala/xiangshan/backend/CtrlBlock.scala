@@ -159,6 +159,8 @@ class CtrlBlockImp(outer: CtrlBlock)(implicit p: Parameters) extends LazyModuleI
 
   private val memDqArb = Module(new MemDispatchArbiter(coreParams.rsBankNum))
   private val wbMergeBuffer = outer.wbMergeBuffer.module
+  vCtrlBlock.io.splitCtrl.allDone := RegNext(wbMergeBuffer.io.splitCtrl.allDone)
+  vCtrlBlock.io.splitCtrl.allowNext := RegNext(wbMergeBuffer.io.splitCtrl.allowNext)
 
   wbMergeBuffer.io.vmbInit := vCtrlBlock.io.vmbInit
   io.vecFaultOnlyFirst.valid := RegNext(wbMergeBuffer.io.ffOut.valid, false.B)
@@ -328,9 +330,10 @@ class CtrlBlockImp(outer: CtrlBlock)(implicit p: Parameters) extends LazyModuleI
   vCtrlBlock.io.vtypewriteback := Pipe(io.vcsrToRename.vtypeWbToRename)
 
   vCtrlBlock.io.vmbAlloc <> wbMergeBuffer.io.allocate
-  for((req, port) <- rob.io.enq.req.zip(vCtrlBlock.io.robEnq)) {
-    port.bits := RegEnable(req.bits.robIdx, req.valid && rob.io.enq.canAccept)
-    port.valid := RegNext(req.valid && rob.io.enq.canAccept, false.B)
+  for((req, port) <- rob.io.enq.req.zip(vCtrlBlock.io.dispatchIn)) {
+    port.isVtype := RegEnable(req.bits.ctrl.isVtype, req.valid && rob.io.enq.canAccept)
+    port.robPtr := RegEnable(req.bits.robIdx, req.valid && rob.io.enq.canAccept)
+    port.valid := RegNext(req.valid && rob.io.enq.canAccept && !rob.io.redirect.valid, false.B)
   }
 
   rob.io.wbFromMergeBuffer.zip(wbMergeBuffer.io.rob).foreach({case(a, b) => a := Pipe(b)})
@@ -349,6 +352,7 @@ class CtrlBlockImp(outer: CtrlBlock)(implicit p: Parameters) extends LazyModuleI
   commitVector.isExtraWalk := rob.io.commits.isExtraWalk
 
   vCtrlBlock.io.commit := commitVector.Pipe
+  vCtrlBlock.io.exception := Pipe(rob.io.exception)
   vCtrlBlock.io.redirect := io.redirectIn
   vCtrlBlock.io.vstart := io.vstart
 

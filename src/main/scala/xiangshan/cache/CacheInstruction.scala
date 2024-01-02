@@ -173,6 +173,7 @@ class CSRCacheOpDecoder(decoder_name: String, id: Int)(implicit p: Parameters) e
   }
 
   def update_cache_req_when_write(csr_name: String, req_field: Data) = {
+    println("csr_name = " + csr_name)
     when(
       cacheop_csr_is_being_write(csr_name)
     ){
@@ -187,6 +188,8 @@ class CSRCacheOpDecoder(decoder_name: String, id: Int)(implicit p: Parameters) e
   update_cache_req_when_write("CACHE_WAY", translated_cache_req.wayNum)
   translated_cache_req_index_dup_vec.map(dup => update_cache_req_when_write("CACHE_IDX", dup))
   translated_cache_req_bank_num_dup_vec.map(dup => update_cache_req_when_write("CACHE_BANK_NUM", dup))
+  update_cache_req_when_write("CACHE_IDX",translated_cache_req.index)
+  update_cache_req_when_write("CACHE_BANK_NUM",translated_cache_req.bank_num)
   update_cache_req_when_write("CACHE_TAG_HIGH", translated_cache_req.write_tag_high)
   update_cache_req_when_write("CACHE_TAG_LOW", translated_cache_req.write_tag_low)
   update_cache_req_when_write("CACHE_TAG_ECC", translated_cache_req.write_tag_ecc)

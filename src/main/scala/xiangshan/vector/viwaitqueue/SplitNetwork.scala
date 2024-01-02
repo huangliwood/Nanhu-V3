@@ -27,7 +27,7 @@ class LsSplitUnit(implicit p: Parameters) extends XSModule {
   private val idx = io.idx
   private val vctrl = io.uop.vctrl
   private val idxSew = vctrl.eew(1)
-  private val memSew = vctrl.eew(0)
+  private val memSew = vctrl.eew(2)
   private val nf = io.uop.vctrl.nf
   private val segIdx = io.out.segIdx
   private val elmIdx = io.out.elmIdx
@@ -148,9 +148,10 @@ class SplitUop(splitNum:Int)(implicit p: Parameters) extends XSModule {
       o.bits.ctrl.fuOpType := lsSu.io.out.fuOpType
       o.bits.uopNum := Mux(io.in.bits.uopNum === 1.U, 0.U, io.in.bits.uopNum)
     }.otherwise {
-      val onlyOneDest = vctrl.eewType(2) === EewType.dc || vctrl.eewType(2) === EewType.const
-      val narrow = vctrl.isNarrow
-      val narrowOrWiden = narrow | vctrl.isWidden
+      val onlyOneDest = vctrl.eewType(2) === EewType.scalar
+      val narrow = vctrl.isNarrow && vctrl.eewType(2) =/= EewType.scalar
+      val widen = vctrl.isWidden && vctrl.eewType(2) =/= EewType.scalar
+      val narrowOrWiden = narrow | widen
       val vs1Addend = GenAddend(vctrl.eewType(0), narrowOrWiden, currentnum)
       val vs2Addend = GenAddend(vctrl.eewType(1), narrowOrWiden, currentnum)
       val vdAddend  = GenAddend(vctrl.eewType(2), narrowOrWiden, currentnum)

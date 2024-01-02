@@ -243,9 +243,15 @@ trait HasCSRConst {
     mode >= lowestAccessPrivilegeLevel && !(wen && readOnly)
   }
 
-  def vcsrAccessPermissionCheck(addr: UInt, wen: Bool): Bool = {
+  def vcsrAccessPermissionCheck(addr: UInt, wen: Bool, vs:UInt): Bool = {
+    val isVector = Seq(Vtype, Vl, Vlenb, Vcsr, Vstart, Vxrm, Vxsat).map(_.U === addr).reduce(_ || _)
     val readOnly = addr === Vtype.U || addr === Vl.U || addr === Vlenb.U
-    !(wen && readOnly)
+    Mux(vs.orR, !(wen && readOnly), !isVector)
+  }
+
+  def fcsrAccessPermissionCheck(addr: UInt, wen: Bool, fs:UInt): Bool = {
+    val isFloat = Seq(Fcsr, Fflags, Frm).map(_.U === addr).reduce(_ || _)
+    Mux(fs.orR, true.B, !isFloat)
   }
 
   def perfcntPermissionCheck(addr: UInt, mode: UInt, mmask: UInt, smask: UInt): Bool = {

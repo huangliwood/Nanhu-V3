@@ -64,6 +64,7 @@ class VTypeRenameTable(size:Int)(implicit p: Parameters) extends XSModule{
   private val headEntry = RegInit({
     val vtypeValue = 0.U.asTypeOf(new VTypeEntry)
     vtypeValue.vill := true.B
+    vtypeValue.writebacked := true.B
     vtypeValue
   })
   private val tailEntries = Seq.fill(size - 1)(Reg(new VTypeEntry))
@@ -168,7 +169,7 @@ class VtypeRename(implicit p: Parameters) extends VectorBaseModule with HasCircu
   table.io.r(0).addr := (enqPtr - 1.U).value
   private val oldVType = WireInit(table.io.r(0).data)
 
-  val firstVtypeRename = PriorityMux(io.needAlloc.reverse, io.in.reverse)
+  val firstVtypeRename = PriorityMux(io.needAlloc, io.in)
   io.canAccept := allocNum <= emptyEntriesNumReg && !io.redirect.valid && ~(!oldVType.writebacked && io.needAlloc.reduce(_||_) && NeedOldVl(firstVtypeRename.bits))
 
   table.io.r(1).addr := deqPtr.value

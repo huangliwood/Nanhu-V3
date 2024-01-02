@@ -54,7 +54,7 @@ object VRegfileTopUtil{
   def GenLoadVrfMask(in:MicroOp, VLEN:Int):UInt = {
     val width = VLEN / 8
     val vlenBytes = log2Ceil(VLEN / 8)
-    val sew = in.vctrl.eew(0)
+    val sew = in.vctrl.eew(2)
     val movIdx = VrfHelper.getElementIdx(in.segIdx, sew, VLEN)
     val mask = MuxCase(0.U, Seq(
       (sew === 0.U) -> ("h01".U << Cat(movIdx(vlenBytes - 1, 0), 0.U(0.W))),
@@ -62,7 +62,7 @@ object VRegfileTopUtil{
       (sew === 2.U) -> ("h0f".U << Cat(movIdx(vlenBytes - 3, 0), 0.U(2.W))),
       (sew === 3.U) -> ("hff".U << Cat(movIdx(vlenBytes - 4, 0), 0.U(3.W))),
     ))
-    Mux(in.loadStoreEnable && !in.cf.exceptionVec.reduce(_ | _), mask(width - 1, 0).asUInt, 0.U(width.W))
+    Mux(in.loadStoreEnable, mask(width - 1, 0).asUInt, 0.U(width.W))
   }
 }
 
@@ -116,7 +116,7 @@ class VRegfileTop(extraVectorRfReadPort: Int)(implicit p:Parameters) extends Laz
 
     vrf.io.wbWakeup.zip(vrf.io.wakeupMask).zip(wbPairNeedMerge).foreach({case((rfwb, rfwkp),(wbin, wbout, cfg)) =>
       if(cfg.exuType == ExuType.ldu){
-        val sew = wbin.bits.uop.vctrl.eew(0)
+        val sew = wbin.bits.uop.vctrl.eew(2)
         val bitsWire = WireInit(wbin.bits)
         bitsWire.data := MuxCase(0.U, Seq(
           (sew === 0.U) -> Cat(Seq.fill(VLEN / 8)(wbin.bits.data(7, 0))),
@@ -130,7 +130,7 @@ class VRegfileTop(extraVectorRfReadPort: Int)(implicit p:Parameters) extends Laz
         rfwb.valid := validReg
         rfwb.bits := bitsReg
         rfwb.bits.wakeupMask := lmask
-        rfwb.bits.writeDataMask := lmask
+        rfwb.bits.writeDataMask := Mux(bitsReg.uop.cf.exceptionVec.reduce(_ | _), 0.U((VLEN / 8).W), lmask)
         rfwb.bits.redirectValid := false.B
         rfwb.bits.redirect := DontCare
       } else {

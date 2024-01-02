@@ -70,8 +70,9 @@ class MEFreeList(size: Int)(implicit p: Parameters) extends BaseFreeList(size) w
   val tailPtrNext = tailPtr + PopCount(io.freeReq)
   tailPtr := tailPtrNext
 
-  val freeRegCnt = Mux(doRename, distanceBetween(tailPtrNext, headPtrNext), distanceBetween(tailPtrNext, headPtr))
-  val freeRegCntReg = RegNext(freeRegCnt)
+  val freeRegCntReg = RegInit(0.U(log2Up(size + 1).W))
+  freeRegCntReg := Mux(doRename, distanceBetween(tailPtrNext, headPtrNext), distanceBetween(tailPtrNext, headPtr))
+  
   io.canAllocate := freeRegCntReg >= RenameWidth.U
 
   val perfEvents = Seq(

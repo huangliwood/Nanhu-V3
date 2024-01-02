@@ -67,7 +67,7 @@ class VFpExu(id:Int, complexName:String)(implicit p: Parameters) extends BasicEx
     private val uopOut = outDelay.bits.uop.sysUop
     private val uopIdx = uopOut.uopIdx
     private val uopNum = uopOut.uopNum
-    private val isNarrow = uopOut.vctrl.isNarrow
+    private val isNarrow = uopOut.vctrl.isNarrow && !uopOut.vctrl.maskOp
     private val lowHalf = !uopIdx(0)
     private val highHalf = uopIdx(0)
     private val maskLen = VLEN / 8

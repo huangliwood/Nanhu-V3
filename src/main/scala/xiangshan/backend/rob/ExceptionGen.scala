@@ -34,6 +34,7 @@ class RobExceptionInfo(implicit p: Parameters) extends XSBundle {
   val crossPageIPFFix = Bool()
   val trigger = new TriggerCf
   val vstart = UInt(7.W)
+  val isVls = Bool()
 
   //  def trigger_before = !trigger.getTimingBackend && trigger.getHitBackend
   //  def trigger_after = trigger.getTimingBackend && trigger.getHitBackend

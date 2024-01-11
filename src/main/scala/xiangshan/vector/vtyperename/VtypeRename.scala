@@ -81,8 +81,8 @@ class VTypeRenameTable(size:Int)(implicit p: Parameters) extends XSModule{
     val en = hitSeq.reduce(_|_)
     when(en) {
       entry := data
-    }.elsewhen(io.vlUpdate.valid){
-      entry.info.vl := entry.info.vl - io.vlUpdate.bits
+    }.elsewhen(io.vlUpdate.valid && io.vlUpdate.bits =/= 0.U){
+      entry.info.vl := io.vlUpdate.bits
     }
   }
 
@@ -283,7 +283,7 @@ class VtypeRename(implicit p: Parameters) extends VectorBaseModule with HasCircu
       val bypassSel = Wire(Vec(i, Bool()))
       io.needAlloc.take(i).zip(uop.take(i)).zipWithIndex.foreach {
         case ((v, in), i) => {
-          bypassSel(i) := v && !NeedOldVl(in.bits)
+          bypassSel(i) := v && !NeedOldVl(in.bits) && in.bits.pdest =/= 0.U
         }
       }
       val bypassPdest = io.in.take(i).map(_.bits.pdest).reverse

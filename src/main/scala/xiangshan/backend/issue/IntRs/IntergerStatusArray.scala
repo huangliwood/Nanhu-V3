@@ -158,14 +158,6 @@ class IntegerStatusArrayEntryUpdateNetwork(issueWidth:Int, wakeupWidth:Int)(impl
 
   io.updateEnable := io.entry.valid | enqUpdateEn
   io.entryNext := Mux(enqUpdateEn, enqNext, miscNext)
-
-  private val debugTimeoutCnt = RegInit(0.U(16.W))
-  when(io.enq.valid) {
-    debugTimeoutCnt := 0.U
-  }.elsewhen(io.entry.valid) {
-    debugTimeoutCnt := debugTimeoutCnt + 1.U
-  }
-  assert(debugTimeoutCnt < 20000.U, "Inst is not dequeued for 20000 cycles!")
 }
 
 class IntegerStatusArray(entryNum:Int, issueWidth:Int, wakeupWidth:Int, loadUnitNum:Int)(implicit p: Parameters) extends XSModule{

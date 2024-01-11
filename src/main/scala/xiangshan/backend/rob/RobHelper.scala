@@ -76,6 +76,14 @@ class RobCommitHelper(implicit p: Parameters) extends XSModule with HasCircularQ
   io.deqPtrNextVec := deqPtrVec_next
   io.deqPtrVec      := deqPtrVec
 
+  private val debugTimeoutCnt = RegInit(0.U(16.W))
+  assert(debugTimeoutCnt < 20000.U, "No inst commits in 20000 cycles!")
+  when(io.state === 0.U && commitCnt.orR) {
+    debugTimeoutCnt := 0.U
+  }.otherwise {
+    debugTimeoutCnt := debugTimeoutCnt + 1.U
+  }
+
   when (io.state === 0.U) {
     XSInfo(io.state === 0.U && commitCnt > 0.U, "retired %d insts\n", commitCnt)
   }

@@ -285,7 +285,7 @@ class Rename(implicit p: Parameters) extends XSModule with HasPerfEvents with Ha
 
     // For fused-lui-load, load.src(0) is replaced by the imm.
     val last_is_lui = io.in(i - 1).bits.ctrl.selImm === SelImm.IMM_U && io.in(i - 1).bits.ctrl.srcType(0) =/= SrcType.pc
-    val this_is_load = io.in(i).bits.ctrl.fuType === FuType.ldu
+    val this_is_load = io.in(i).bits.ctrl.fuType === FuType.ldu && !io.in(i).bits.ctrl.isVector
     val lui_to_load = io.in(i - 1).valid && io.in(i - 1).bits.ctrl.ldest === io.in(i).bits.ctrl.lsrc(0)
     val fused_lui_load = last_is_lui && this_is_load && lui_to_load
     val setVlBypass = io.out(i).bits.ctrl.fuType === FuType.csr &&

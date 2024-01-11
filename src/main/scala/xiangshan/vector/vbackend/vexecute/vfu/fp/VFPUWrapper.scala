@@ -6,6 +6,7 @@ import chisel3.util.experimental.decode._
 import org.chipsalliance.cde.config.Parameters
 import darecreek.exu.vfu._
 import xiangshan.Redirect
+import fudian.FloatPoint
 
 class VFPUWrapper(implicit p: Parameters) extends VFuModule {
   val io = IO(new Bundle {
@@ -257,29 +258,15 @@ class VFPUWrapper(implicit p: Parameters) extends VFuModule {
 
   def smin(w: Int) = Cat(1.U(1.W), 0.U((w - 1).W))
 
-  def fmax(w: Int) = {
-    w match {
-      case 32 => Cat(0.U(1.W), ~(0.U(8.W)), 0.U(23.W))
-      case 64 => Cat(0.U(1.W), ~(0.U(11.W)), 0.U(52.W))
-      case _ => Cat(0.U(1.W), ~(0.U((w - 1).W)))
-    }
-  }
-
-  def fmin(w: Int) = {
-    w match {
-      case 32 => Cat(1.U(1.W), ~(0.U(8.W)), 0.U(23.W))
-      case 64 => Cat(1.U(1.W), ~(0.U(11.W)), 0.U(52.W))
-      case _ => Cat(1.U(1.W), ~(0.U((w - 1).W)))
-    }
-  }
-
   val ele64 = Wire(UInt(64.W))
   ele64 := 0.U
   when(fire) {
-    when(vfredmax_vs) {
-      ele64 := Mux1H(eew.oneHot, Seq(8, 16, 32, 64).map(n => fmin(n)))
-    }.elsewhen(vfredmin_vs) {
-      ele64 := Mux1H(eew.oneHot, Seq(8, 16, 32, 64).map(n => fmax(n)))
+    when(vfredmax_vs || vfredmin_vs) {
+      when(eew.is32) {
+        ele64 := Cat(0.U(32.W), FloatPoint.defaultNaNUInt(VFPU.f32.expWidth, VFPU.f32.precision))
+      }.otherwise {
+        ele64 := FloatPoint.defaultNaNUInt(VFPU.f64.expWidth, VFPU.f64.precision)
+      }
     }
   }
 
@@ -290,7 +277,7 @@ class VFPUWrapper(implicit p: Parameters) extends VFuModule {
   //---- Mask gen ----
   val maskIdx = Mux(narrow, uopIdx >> 1, uopIdx)
   val mask16b = MaskExtract(io.in.bits.mask, maskIdx, eewVd)
-  val mask16b_red = MaskExtractRed(io.in.bits.mask, maskIdx, eew, vs2, fpu_red_cmp)
+  val mask16b_red = MaskExtract(io.in.bits.mask, maskIdx, eew)
   val old_vd_16b = MaskExtract(io.in.bits.oldVd, maskIdx, eewVd)
 
   val tailReorg = MaskReorg.splash(tail, eewVd)
@@ -381,7 +368,7 @@ class VFPUWrapper(implicit p: Parameters) extends VFuModule {
     red_uop.ctrl.lsrc(1) := 0.U
     red_uop.ctrl.ldest := 0.U
     red_uop.ctrl.vm := true.B
-    red_uop.ctrl.widen := widen
+    red_uop.ctrl.widen := false.B
     red_uop.ctrl.widen2 := widen2
     red_uop.ctrl.narrow := narrow
     red_uop.ctrl.narrow_to_1 := narrow_to_1

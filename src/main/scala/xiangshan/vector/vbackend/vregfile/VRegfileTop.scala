@@ -217,7 +217,7 @@ class VRegfileTop(extraVectorRfReadPort: Int)(implicit p:Parameters) extends Laz
       bo.issue.valid := issValidReg
       bo.issue.bits := issDataReg
       when(allowPipe){
-        issValidReg := bi.issue.valid
+        issValidReg := bi.issue.valid && !bi.issue.bits.uop.robIdx.needFlush(io.redirect)
       }
       when(bi.issue.fire) {
         issDataReg := exuInBundle

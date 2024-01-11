@@ -19,7 +19,7 @@ package object vfu {
     res.ctrl.widen := src.vctrl.isWidden && src.vctrl.eewType(1) === EewType.sew
     res.ctrl.widen2 := src.vctrl.isWidden && src.vctrl.eewType(1) === EewType.sewm2
     res.ctrl.narrow := src.vctrl.isNarrow && src.vctrl.eewType(2) === EewType.sew
-    res.ctrl.narrow_to_1 := src.vctrl.isNarrow && src.vctrl.eewType(2) === EewType.scalar
+    res.ctrl.narrow_to_1 := src.vctrl.isNarrow && src.vctrl.maskOp
     res.info.ma := src.vCsrInfo.vma(0)
     res.info.ta := src.vCsrInfo.vta(0)
     res.info.vsew := src.vCsrInfo.vsew

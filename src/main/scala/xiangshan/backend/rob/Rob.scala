@@ -1057,6 +1057,18 @@ class RobImp(outer: Rob)(implicit p: Parameters) extends LazyModuleImp(outer)
     }
   }
 
+  val debug_enqPtr = RegInit(0.U.asTypeOf(new RobPtr))
+  val debug_hasEnq = io.enq.canAccept && io.enq.req.map(_.valid).reduce(_||_)
+  when(debug_hasEnq) {
+    val enqVec = io.enq.req.map(_.valid)
+    val tailEnq = PriorityMux(enqVec.reverse, io.enq.req.map(_.bits).reverse)
+    val headEnq = PriorityMux(enqVec, io.enq.req.map(_.bits))
+    assert(headEnq.robIdx.value === debug_enqPtr.value)
+    debug_enqPtr := debug_enqPtr + PopCount(enqVec)
+  }.elsewhen(io.redirect.valid) {
+    debug_enqPtr := Mux(io.redirect.bits.flushItself(), io.redirect.bits.robIdx, io.redirect.bits.robIdx + 1.U)
+  }
+
   if (env.EnableDifftest) {
     for (i <- 0 until CommitWidth) {
       val difftestLdEvent = DifftestModule(new DiffLoadEvent, delay = 3)

@@ -51,7 +51,7 @@ class VectorCtrlBlock(vecDpWidth: Int, vpDpWidth: Int, memDpWidth: Int)(implicit
     //from ctrl rename
     val fromVtpRn = Input(Vec(RenameWidth, new VtpToVCtl))
     //from ctrl rob
-    val dispatchIn = Vec(VIDecodeWidth, Input(new DispatchInfo))
+    val dispatchIn = Vec(VIDecodeWidth, Input(Valid(new RobPtr)))
     val vtypewriteback = Flipped(ValidIO(new VtypeWbIO)) //to wait queue
     val vmbAlloc = Flipped(new VmbAlloc)
     val commit = Flipped(new RobCommitIO) // to rename

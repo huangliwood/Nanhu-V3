@@ -934,7 +934,7 @@ class LoadQueue(implicit p: Parameters) extends XSModule
       }
     }
   }
-  io.uncache.req.valid := (uncache_Order_State === s_req) && (!uop(deqPtr).vctrl.ordered)
+  io.uncache.req.valid := uncache_Order_State === s_req
 
   dataModule.io.uncache.raddr := deqPtrExtNext.value  //todo
 

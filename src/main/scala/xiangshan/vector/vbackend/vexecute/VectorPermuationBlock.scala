@@ -54,7 +54,7 @@ class VectorPermutationBlock(implicit p: Parameters) extends LazyModule{
     io.rfReadPort.srf.addr := vprs.module.io.issue.bits.prs
     private val idata = RegEnable(io.rfReadPort.srf.idata, vprs.module.io.issue.bits.rsRen)
     private val fdata = RegEnable(io.rfReadPort.srf.fdata, vprs.module.io.issue.bits.rsRen)
-    private val rsData = Mux(RegNext(vprs.module.io.issue.bits.prsType === SrcType.fp), fdata, idata)
+    private val rsData = Mux(RegEnable(vprs.module.io.issue.bits.prsType === SrcType.fp, vprs.module.io.issue.bits.rsRen), fdata, idata)
 
     private val fuReady = !permutation.io.out.perm_busy
     private val issueDataReg = Reg(new VprsIssueBundle)
@@ -66,14 +66,6 @@ class VectorPermutationBlock(implicit p: Parameters) extends LazyModule{
     }
     when(vprs.module.io.issue.fire){
       issueDataReg := vprs.module.io.issue.bits
-      val actual_pvs2 = WireInit(vprs.module.io.issue.bits.pvs2)
-      when(vprs.module.io.issue.bits.uop.vctrl.isWidden && vprs.module.io.issue.bits.uop.uopNum > 1.U) {
-        actual_pvs2(0) := vprs.module.io.issue.bits.pvs2(0)
-        actual_pvs2(1) := vprs.module.io.issue.bits.pvs2(2)
-        actual_pvs2(2) := vprs.module.io.issue.bits.pvs2(4)
-        actual_pvs2(3) := vprs.module.io.issue.bits.pvs2(6)
-      }
-      issueDataReg.pvs2 := actual_pvs2
       issueScalarDataReg := rsData
     }
     vprs.module.io.issue.ready := allowPipe
@@ -83,6 +75,8 @@ class VectorPermutationBlock(implicit p: Parameters) extends LazyModule{
     io.rfReadPort.vrf.addr := rfReqAddr
     private val rfRespValid = RegNext(rfReqValid, false.B)
     private val rfRespData = RegEnable(io.rfReadPort.vrf.data, rfReqValid)
+    private val isVgei16 = issueDataReg.uop.vctrl.funct6 === "b001110".U && issueDataReg.uop.vctrl.funct3 === "b000".U
+    private val isE8 = issueDataReg.uop.vCsrInfo.vsew === 0.U
 
     permutation.io.in.uop := uopToVuop(issueDataReg.uop, issueValidReg, io.vstart, io.vcsr(2,1), io.frm, p)
     permutation.io.in.uop.info.vstart := io.vstart
@@ -93,10 +87,15 @@ class VectorPermutationBlock(implicit p: Parameters) extends LazyModule{
     permutation.io.in.vs2_preg_idx := issueDataReg.pvs2
     permutation.io.in.old_vd_preg_idx := issueDataReg.pov
     permutation.io.in.mask_preg_idx := issueDataReg.pvm
-    permutation.io.in.uop_valid := issueValidReg
+    permutation.io.in.uop_valid := issueValidReg && !issueDataReg.uop.robIdx.needFlush(io.redirect)
     permutation.io.in.rdata := rfRespData
     permutation.io.in.rvalid := rfRespValid
     permutation.io.redirect := io.redirect
+    when(isVgei16 && isE8) {
+      permutation.io.in.vs2_preg_idx(1) := issueDataReg.pvs2(2)
+      permutation.io.in.vs2_preg_idx(2) := issueDataReg.pvs2(4)
+      permutation.io.in.vs2_preg_idx(3) := issueDataReg.pvs2(6)
+    }
 
     private val fuInFire = issueValidReg && fuReady
     private val pdestReg = RegEnable(issueDataReg.pdest, fuInFire)

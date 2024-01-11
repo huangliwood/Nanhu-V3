@@ -62,30 +62,16 @@ class MemDispatchArbiter(arbWidth: Int)(implicit p: Parameters) extends XSModule
     }
   }
 
-  for(((v, mIn), i) <- vmemCanDeqVec.zip(io.vmemIn).zipWithIndex) {
-    if(i == 0) {
-      v := mIn.valid && io.vmemIn(0).bits.uopNum =/= 0.U
-    } else {
-      val recur_v = VecInit(vmemCanDeqVec.take(i)).asUInt.andR
-      v := mIn.valid && recur_v && mIn.bits.robIdx === vRobIdx
-    }
-  }
-
-  val redirectRobIdx = io.redirect.bits.robIdx
-  //&& !(io.redirect.valid && redirectRobIdx <= memIn.bits.robIdx)
-
   io.memIn.zip(io.toMem2RS).zipWithIndex.foreach {
     case ((in, out), i) => {
       val isMem = !in.bits.ctrl.isVector
       val isVMem = in.bits.ctrl.isVector
+      //s -> out
+      //s -> out
+      //v -> drop
+      //s -> block
       val canOut = ((isMem && memCanDeqVec(i)) || (isVMem && PopCount(memCanDeqVec) === i.U)) && in.valid
-      in.ready := (arbState===s_mem) && out.ready && canOut
-    }
-  }
-
-  io.vmemIn.zip(io.toMem2RS).zipWithIndex.foreach {
-    case ((in, out), i) => {
-      in.ready := (arbState===s_vmem) && out.ready && in.valid && (in.bits.robIdx === vRobIdx)
+      in.ready := (arbState === s_mem) && out.ready && canOut
     }
   }
 
@@ -106,7 +92,27 @@ class MemDispatchArbiter(arbWidth: Int)(implicit p: Parameters) extends XSModule
     arbState := s_vmem
     vRobIdx := selIn.bits.robIdx
   }
-  
+
+  for(((v, mIn), i) <- vmemCanDeqVec.zip(io.vmemIn).zipWithIndex) {
+    if(i == 0) {
+      v := mIn.valid && (io.vmemIn(0).bits.uopNum =/= 0.U) && (mIn.bits.robIdx === vRobIdx)
+    } else {
+      val recur_v = VecInit(vmemCanDeqVec.take(i)).asUInt.andR
+      v := mIn.valid && recur_v && (mIn.bits.robIdx === vRobIdx) && (mIn.bits.robIdx === vRobIdx)
+    }
+  }
+
+  io.vmemIn.zip(io.toMem2RS).zipWithIndex.foreach {
+    case ((in, out), i) => {
+      if(i == 0) {
+        in.ready := (arbState === s_vmem) && out.ready && in.valid && (in.bits.robIdx === vRobIdx)
+      } else {
+        val previousAllReady = io.vmemIn.map(_.ready).take(i).reduce(_&&_)
+        in.ready := (arbState === s_vmem) && out.ready && in.valid && (in.bits.robIdx === vRobIdx) && previousAllReady
+      }
+    }
+  }
+
   when(arbState === s_vmem) {
     val needFlush = vRobIdx.needFlush(io.redirect)
     val accessTail = io.vmemIn(vmemDeqTail).bits.uopIdx === (io.vmemIn(vmemDeqTail).bits.uopNum - 1.U)

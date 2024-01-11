@@ -168,8 +168,9 @@ class Permutation(implicit p: Parameters) extends VFuModule {
   val cmprs_update_vs_idx = Wire(Bool())
   val vslide_ele = Mux(reg_vslide1up || reg_vslide1dn, 1.U, rs1_reg)
   val vslide_bytes = vslide_ele << vsew_reg
-  val vslide_lo_valid = Mux(reg_vslideup || reg_vslide1up, vslide_bytes(65, 4) + 1.U <= vs_idx, (reg_vslidedn || reg_vslide1dn) && (vs_idx + vslide_bytes(65, 4) <= rd_vlmul))
-  val vslide_hi_valid = Mux(reg_vslideup || reg_vslide1up, vslide_bytes(65, 4) <= vs_idx, (reg_vslidedn || reg_vslide1dn) && (vs_idx + vslide_bytes(65, 4) + 1.U <= rd_vlmul))
+
+  val vslide_lo_valid = Mux(reg_vslideup || reg_vslide1up, vslide_bytes(70, 4) +& 1.U <= vs_idx, (reg_vslidedn || reg_vslide1dn) && (vs_idx +& vslide_bytes(70, 4) <= rd_vlmul))
+  val vslide_hi_valid = Mux(reg_vslideup || reg_vslide1up, vslide_bytes(70, 4) <= vs_idx, (reg_vslidedn || reg_vslide1dn) && (vs_idx +& vslide_bytes(70, 4) +& 1.U <= rd_vlmul))
   val vslide_cnt_max = Wire(UInt(2.W))
   val vslide_rd_cnt = RegInit(0.U(2.W))
   val rd_mask_en = RegInit(false.B)
@@ -355,14 +356,10 @@ class Permutation(implicit p: Parameters) extends VFuModule {
     vrgather_rd_preg_idx := mask_preg_idx_reg
   }.elsewhen(reg_vrgather && rd_vs_en) {
     when(vrgather_rd_cnt === 0.U) {
-      vrgather_rd_preg_idx := Mux(reg_vrgather16_sew8, old_vd_preg_idx_reg(vs_idx(2, 1)), old_vd_preg_idx_reg(vs_idx))
+      vrgather_rd_preg_idx := old_vd_preg_idx_reg(vs_idx)
     }.elsewhen(vrgather_rd_cnt === 1.U) {
       when(reg_vrgather_vxi) {
         vrgather_rd_preg_idx := vs2_preg_idx_reg(vs_idx)
-      }.elsewhen(reg_vrgather16_sew32) {
-        vrgather_rd_preg_idx := vs1_preg_idx_reg(vs_idx(2, 1))
-      }.elsewhen(reg_vrgather16_sew64) {
-        vrgather_rd_preg_idx := vs1_preg_idx_reg(vs_idx(2))
       }.otherwise {
         vrgather_rd_preg_idx := vs1_preg_idx_reg(vs_idx)
       }
@@ -644,9 +641,7 @@ class Permutation(implicit p: Parameters) extends VFuModule {
     vlRemain := Mux(vslideup && (rs1_imm > vl), Mux(rs1_imm > VLEN.U, VLEN.U, rs1_imm), vl)
   }.elsewhen(reg_vcompress && rdata_update_vs_idx) {
     vlRemain := Mux(vlRemain >= (1.U << vsew_shift), vlRemain - (1.U << vsew_shift), 0.U)
-  }.elsewhen(!reg_vrgather16_sew8 && !reg_vcompress && rdata_wb_vld) {
-    vlRemain := Mux(vlRemain >= (1.U << vsew_shift), vlRemain - (1.U << vsew_shift), 0.U)
-  }.elsewhen(reg_vrgather16_sew8 && rdata_wb_vld && wb_idx(0)) {
+  }.elsewhen(!reg_vcompress && rdata_wb_vld) {
     vlRemain := Mux(vlRemain >= (1.U << vsew_shift), vlRemain - (1.U << vsew_shift), 0.U)
   }
 
@@ -739,13 +734,3 @@ class Permutation(implicit p: Parameters) extends VFuModule {
   io.out.wb_data := perm_vd
   io.out.perm_busy := perm_busy | flush
 }
-
-import xiangshan._
-
-object Main extends App {
-  println("Generating hardware")
-  val p = Parameters.empty.alterPartial({ case XSCoreParamsKey => XSCoreParameters() })
-  emitVerilog(new Permutation()(p.alterPartial({ case VFuParamsKey => VFuParameters() })), Array("--target-dir", "generated",
-    "--emission-options=disableMemRandomization,disableRegisterRandomization"))
-}
-

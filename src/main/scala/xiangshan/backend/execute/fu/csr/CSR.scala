@@ -473,7 +473,7 @@ class CSR(implicit p: Parameters) extends FUWithRedirect
   println("  Enable soft prefetch after reset: " + EnableSoftPrefetchAfterReset)
   println("  Enable cache error after reset: " + EnableCacheErrorAfterReset)
 
-  val srnctl = RegInit(UInt(XLEN.W), "hf".U)
+  val srnctl = RegInit(UInt(XLEN.W), "hb".U)
   csrio.customCtrl.fusion_enable := srnctl(0)
   csrio.customCtrl.svinval_enable := srnctl(1)
   csrio.customCtrl.wfi_enable := srnctl(2)
@@ -566,6 +566,11 @@ class CSR(implicit p: Parameters) extends FUWithRedirect
     Cat(vcsrOld.reserved, wdata.asTypeOf(vcsrOld).vxrm, wdata.asTypeOf(vcsrOld).vxsat)
   }
 
+    def vstart_wfn(wdata: UInt): UInt = {
+    csrw_dirty_vec_state := true.B
+    wdata
+  }
+
   val vlenb   = RegInit(UInt(XLEN.W), (VLEN/8).U(XLEN.W)) //is read-only
   val vstart  = RegInit(UInt(XLEN.W), 0.U(XLEN.W))
   //val vxrm    = RegInit(UInt(XLEN.W), 0.U(XLEN.W))
@@ -577,7 +582,7 @@ class CSR(implicit p: Parameters) extends FUWithRedirect
 
   val vcsrMapping = Map(
     MaskedRegMap(Vlenb,   vlenb, MaskedRegMap.UnwritableMask, MaskedRegMap.Unwritable),
-    MaskedRegMap(Vstart,  vstart),
+    MaskedRegMap(Vstart,  vstart, wfn = vstart_wfn),
     MaskedRegMap(Vxrm,    vcsr, wfn = vxrm_wfn, rfn = vxrm_rfn),
     MaskedRegMap(Vxsat,   vcsr, wfn = vxsat_wfn(update = false), rfn = vxsat_rfn),
     MaskedRegMap(Vcsr,    vcsr, wfn = vcsr_wfn),
@@ -817,7 +822,7 @@ class CSR(implicit p: Parameters) extends FUWithRedirect
   val wen = valid && func =/= CSROpType.jmp && (addr=/=Satp.U || satpLegalMode) && !isVset && !ignoreWrite
   val dcsrPermitted = dcsrPermissionCheck(addr, false.B, debugMode)
   val triggerPermitted = triggerPermissionCheck(addr, true.B, debugMode) // todo dmode
-  val modePermitted = csrAccessPermissionCheck(addr, false.B, priviledgeMode) && dcsrPermitted && triggerPermitted
+  val modePermitted = csrAccessPermissionCheck(addr, wen, priviledgeMode) && dcsrPermitted && triggerPermitted
   val perfcntPermitted = perfcntPermissionCheck(addr, priviledgeMode, mcounteren, scounteren)
   val vcsrPermitted = vcsrAccessPermissionCheck(addr, wen, mstatusStruct.vs)
   val fcsrPermitted = fcsrAccessPermissionCheck(addr, wen, mstatusStruct.fs)
@@ -1053,6 +1058,8 @@ class CSR(implicit p: Parameters) extends FUWithRedirect
   val disableInterrupt = debugMode || (dcsrData.step && !dcsrData.stepie)
   intrVecEnable.zip(ideleg.asBools).map{case(x,y) => x := priviledgedEnableDetect(y) && !disableInterrupt}
   val intrVec = Cat(debugIntr && !debugMode, (mie(11,0) & mip.asUInt & intrVecEnable.asUInt))
+  val mintrVec = intrVec & (~mideleg(12, 0))
+  val mintrNO = IntPriority.foldRight(0.U)((i: Int, sum: UInt) => Mux(mintrVec(i), i.U, sum))
   val intrBitSet = intrVec.orR
   csrio.interrupt := intrBitSet
   // Page 45 in RISC-V Privileged Specification
@@ -1066,7 +1073,8 @@ class CSR(implicit p: Parameters) extends FUWithRedirect
   mipWire.e.s := csrio.externalInterrupt.seip
 
   // interrupts
-  val intrNO = IntPriority.foldRight(0.U)((i: Int, sum: UInt) => Mux(intrVec(i), i.U, sum))
+  val allIntrNO = IntPriority.foldRight(0.U)((i: Int, sum: UInt) => Mux(intrVec(i), i.U, sum))
+  val intrNO = Mux(mintrVec.orR, mintrNO, allIntrNO)
   // Def: intrVec -> intrBitSet -> csrio.interrupt
   // T1: CSR.csrio.interrupt -> JumpCSRExeUnit -> FUBlock -> ExuBlock -> CtrlBlock
   //     -> ROB.io_csr_intrBitSet -> ROB.intrBitSetReg
@@ -1078,7 +1086,7 @@ class CSR(implicit p: Parameters) extends FUWithRedirect
   // Use: DelayN(2).io_out_bits_isInterrupt -> CSR.csrio_exception_bits_isInterrupt -> mcause
   val intrNOReg = DelayN(intrNO, 4)
   val hasIntr = csrio.exception.valid && csrio.exception.bits.isInterrupt
-  val ivmEnable = tlbBundle.priv.imode < ModeM && satp.asTypeOf(new SatpStruct).mode === 8.U
+  val ivmEnable = tlbBundle.priv.imode < ModeM
   val iexceptionPC = Mux(ivmEnable, SignExt(csrio.exception.bits.uop.cf.pc, XLEN), csrio.exception.bits.uop.cf.pc)
   val dvmEnable = tlbBundle.priv.dmode < ModeM && satp.asTypeOf(new SatpStruct).mode === 8.U
   val dexceptionPC = Mux(dvmEnable, SignExt(csrio.exception.bits.uop.cf.pc, XLEN), csrio.exception.bits.uop.cf.pc)
@@ -1178,7 +1186,7 @@ class CSR(implicit p: Parameters) extends FUWithRedirect
   val delegS = deleg(causeNO(3,0)) && (priviledgeMode < ModeM)
   val clearTval = !updateTval || hasIntr
 
-  private val xtvec = Mux(delegS, stvec, mtvec)
+  private val xtvec = Mux(delegS && !mintrVec.orR, stvec, mtvec)
   private val xtvecBase = xtvec(VAddrBits - 1, 2)
   // When MODE=Vectored, all synchronous exceptions into M/S mode
   // cause the pc to be set to the address in the BASE field, whereas
@@ -1235,7 +1243,7 @@ class CSR(implicit p: Parameters) extends FUWithRedirect
       debugIntrEnable := false.B
     }.elsewhen (debugMode) {
       //do nothing
-    }.elsewhen (delegS) {
+    }.elsewhen (delegS && !mintrVec.orR) {
       scause := causeNO
       sepc := Mux(hasInstrPageFault || hasInstrAccessFault, iexceptionPC, dexceptionPC)
       mstatusNew.spp := priviledgeMode

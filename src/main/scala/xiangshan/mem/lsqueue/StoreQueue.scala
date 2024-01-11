@@ -326,6 +326,7 @@ class StoreQueue(implicit p: Parameters) extends XSModule with HasPerfLogging
       uop(stWbIndex).ctrl := io.storeIn(i).bits.uop.ctrl
       uop(stWbIndex).mergeIdx := io.storeIn(i).bits.uop.mergeIdx
       uop(stWbIndex).uopIdx := io.storeIn(i).bits.uop.uopIdx
+      uop(stWbIndex).segIdx := io.storeIn(i).bits.uop.segIdx
       uop(stWbIndex).uopNum := io.storeIn(i).bits.uop.uopNum
       uop(stWbIndex).vctrl := io.storeIn(i).bits.uop.vctrl
       uop(stWbIndex).debugInfo := io.storeIn(i).bits.uop.debugInfo
@@ -580,7 +581,7 @@ class StoreQueue(implicit p: Parameters) extends XSModule with HasPerfLogging
   private val readyToDeq = Reg(Vec(StoreQueueSize, Bool()))
   for (i <- 0 until StoreQueueSize) {
     readyToDeq(i) := readyToLeave(i) & writebacked_sta(i) & writebacked_std(i) & allocated(i) &
-      !(uop(i).robIdx === exceptionInfo.bits.robIdx && exceptionInfo.valid)
+      !(uop(i).robIdx === exceptionInfo.bits.robIdx && uop(i).segIdx === exceptionInfo.bits.segIdx && exceptionInfo.valid)
   }
   private val cmtVec = Seq.tabulate(CommitWidth)({idx =>
     val ptr = cmtPtrExt(idx)

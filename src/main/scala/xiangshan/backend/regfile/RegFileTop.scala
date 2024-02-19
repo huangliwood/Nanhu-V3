@@ -30,6 +30,7 @@ import xiangshan.backend.writeback.{WriteBackSinkNode, WriteBackSinkParam, Write
 import xiangshan.frontend.Ftq_RF_Components
 import xiangshan.vector.HasVectorParameters
 import xiangshan._
+import xiangshan.backend.decode.ImmUnion
 import xiangshan.backend.execute.exu.ExuType
 import xiangshan.vector.vbackend.vregfile.{MoveReq, VectorRfReadPort, VrfHelper}
 import xs.utils.{DelayN, SignExt, ZeroExt}
@@ -47,6 +48,7 @@ class AddrGen(implicit p:Parameters) extends XSModule{
     val stride = Input(UInt(XLEN.W))
     val offset = Input(UInt(VLEN.W))
     val target = Output(UInt(XLEN.W))
+    val imm = Output(UInt(ImmUnion.maxLen.W))
   })
   private val isStride = io.uop.ctrl.srcType(1) === SrcType.reg
   private val sew = io.uop.vctrl.eew(1)
@@ -63,6 +65,7 @@ class AddrGen(implicit p:Parameters) extends XSModule{
   private val strideTarget = io.base + strideOffset
 
   io.target := Mux(isStride, strideTarget, offsetTarget)
+  io.imm := (io.uop.elmIdx << io.uop.vctrl.eew(2)(1, 0)).asUInt
 }
 
 class RegFileTop(extraScalarRfReadPort: Int)(implicit p:Parameters) extends LazyModule with HasXSParameter with HasVectorParameters{
@@ -228,8 +231,7 @@ class RegFileTop(extraScalarRfReadPort: Int)(implicit p:Parameters) extends Lazy
               exuInBundle.src(0) := intRf.io.read(intRfReadIdx).data
               exuInBundle.uop.ctrl.imm := (ZeroExt(uopIdx,12) << sew)(11, 0)
             }.otherwise{
-              val elmOff = (bi.issue.bits.uop.elmIdx << bi.issue.bits.uop.vctrl.eew(2)(1, 0)).asUInt
-              val baseAddrReg = RegEnable(intRf.io.read(intRfReadIdx).data + elmOff, bi.issue.valid && bi.hold)
+              val baseAddrReg = RegEnable(intRf.io.read(intRfReadIdx).data, bi.issue.valid && bi.hold)
               val strideReg = RegEnable(intRf.io.read(intRfReadIdx + 1).data, bi.issue.valid && bi.hold)
               val offsetReg = RegEnable(io.vectorReads(vecReadPortIdx).data, bi.issue.valid && bi.hold)
               val uopReg = RegEnable(bi.issue.bits.uop, bi.issue.valid && bi.hold)
@@ -239,7 +241,7 @@ class RegFileTop(extraScalarRfReadPort: Int)(implicit p:Parameters) extends Lazy
               addrGen.io.offset := offsetReg
               addrGen.io.uop := uopReg
               exuInBundle.src(0) := addrGen.io.target
-              exuInBundle.uop.ctrl.imm := 0.U
+              exuInBundle.uop.ctrl.imm := addrGen.io.imm
             }
           }.otherwise {
             issueBundle.src(0) := intRf.io.read(intRfReadIdx).data
